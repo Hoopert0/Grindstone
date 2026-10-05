@@ -72,3 +72,27 @@ def test_old_addon_falls_back_quietly():
             raise GameStateError("unknown state 'widgets'")
     assert widgets.find(Old()) == [] and widgets._unsupported
     assert widgets.make_box(Old()) == [] and not widgets.continue_dialog(Ctx(), Old())
+
+
+def test_make_smithing_buttons_one_per_amount():
+    """The smithing screen gives each amount its own button (the server's SmithingType ids) -
+    pick the product's 'All' button, not the nearest '1'."""
+    ctx = Ctx()
+    gs = GS([W("Dagger", x=20, y=60, w=50, h=12), W("Axe", x=120, y=60, w=50, h=12),
+             W(ops=["Make 1"], x=20, y=30, w=10, h=10), W(ops=["Make 5"], x=32, y=30, w=10, h=10),
+             W(ops=["Make X"], x=44, y=30, w=10, h=10), W(ops=["Make All"], x=56, y=30, w=10, h=10),
+             W(ops=["Make 1"], x=120, y=30, w=10, h=10), W(ops=["Make All"], x=156, y=30, w=10, h=10)])
+    assert widgets.make(ctx, gs, product="dagger", amounts=("All", "10", "5"))
+    (x, _), = ctx.clicks
+    assert 56 <= x <= 66
+
+
+def test_make_stacked_buttons_use_the_menu():
+    menu = {"open": True, "x": 0, "y": 0, "w": 100, "entries": [{"verb": "Make 1", "row": 0},
+                                                                {"verb": "Make All", "row": 1}]}
+    ctx = Ctx()
+    gs = GS([W("Dagger", x=20, y=60, w=50, h=12),
+             W(ops=["Make 1"], x=20, y=30), W(ops=["Make All"], x=20, y=30),     # same spot
+             W(ops=["Make 1"], x=220, y=30)], menu)
+    assert widgets.make(ctx, gs, product="dagger", amounts=("All",))
+    assert len(ctx.rclicks) == 1 and len(ctx.clicks) == 1

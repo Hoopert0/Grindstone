@@ -324,12 +324,15 @@ def test_runecrafting_teleports_by_level_and_crafts(game, monkeypatch):
     from lumberjack.nav import places
     teles = []
     monkeypatch.setattr(places, "teleport", lambda ctx, gs, tile, plane=0: teles.append((tuple(tile), plane)) or True)
+    monkeypatch.setattr(actions, "reset_camera", lambda ctx: None)
     r = bot(S.Runecrafter, game)
     r.setup()
     assert teles == [((2841, 4829), 0)] and r.came_from == (3200, 3200, 0)     # air altar at level 1
     r.restock(game.inv, {})
     assert sum(s["key"] == "pure_essence" for s in game.inv) == 28 and len(teles) == 1
-    game.locs = lambda radius, name=None: [{"name": "Altar", "ops": ["Craft-rune"], "tile": [2843, 4833],
+    game.locs = lambda radius, name=None: [{"name": "Portal", "id": 2465, "ops": ["Use"], "tile": [2841, 4828],
+                                            "screen": [300, 260], "body": [300, 240]},
+                                           {"name": "Altar", "id": 2478, "ops": ["Craft-rune"], "tile": [2843, 4833],
                                             "screen": [300, 200], "body": [300, 180]}]
 
     def craft(ctx, gs, points, verb, subject):
@@ -342,8 +345,8 @@ def test_runecrafting_teleports_by_level_and_crafts(game, monkeypatch):
     monkeypatch.setattr(interact, "use_option", craft)
     assert r.process(game.inv, r.supply_slots(game.inv), {}) == 28
     game.skills_["runecrafting"]["level"] = 27
-    r.restock(game.inv, {})                       # level 27: on to the cosmic altar, runes dropped
+    r.restock(game.inv, {})                       # level 27: on to the cosmic altar, runes kept (one stack)
     assert teles[-1] == ((2162, 4833), 0)
-    assert not any(s["key"] == "air_rune" for s in game.inv)
+    assert any(s["key"] == "air_rune" for s in game.inv)
     r.teardown()
     assert teles[-1] == ((3200, 3200), 0)                                       # back where it started

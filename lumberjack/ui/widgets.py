@@ -42,6 +42,9 @@ def find(gs, match=None):
         w["text"] = clean(w.get("text"))[0] if w.get("text") else ""
         w["name"] = clean(w.get("name"))[0] if w.get("name") else ""
         w["ops"] = [clean(o)[0] for o in w.get("ops") or [] if o]
+        opt = clean(w.get("option"))[0] if w.get("option") else ""
+        if opt and opt not in w["ops"]:          # an older-style button: its one action ("Make All")
+            w["ops"].append(opt)
     return out
 
 
@@ -68,12 +71,13 @@ def continue_dialog(ctx, gs):
     return False
 
 
-def choose(ctx, gs, w, op):
-    """Do option `op` of component `w`: left-click when it's the first option, else right-click
-    and pick it from the menu by text. True if clicked."""
+def choose(ctx, gs, w, op, menu=False):
+    """Do option `op` of component `w`: left-click when it's the first option, else (or with
+    menu=True: other components lie on top of it) right-click and pick it from the menu by
+    text. True if clicked."""
     x, y = center(w)
     x, y = x + random.randint(-3, 3), y + random.randint(-3, 3)
-    if w["ops"] and w["ops"][0].lower() == op.lower():
+    if not menu and w["ops"] and w["ops"][0].lower() == op.lower():
         ctx.inp.click(x, y)
         return True
     ctx.inp.right_click(x, y)
@@ -112,7 +116,20 @@ def make(ctx, gs, product=None, amounts=("All", "10", "X", "5")):
         labels = [w for w in find(gs) if w["text"] and want in w["text"].lower()]
         if labels:                          # the option nearest its label (rows or a grid)
             lx, ly = center(labels[0])
-            target = min(box, key=lambda w: (center(w)[0] - lx) ** 2 + (center(w)[1] - ly) ** 2)
+            dist = lambda w: (center(w)[0] - lx) ** 2 + (center(w)[1] - ly) ** 2
+            # some boxes (smithing) give each amount its own button: take the nearest button
+            # that offers the amount we want, not just the nearest button
+            for amount in amounts:
+                offers = [w for w in box if any(o.lower().endswith(" " + amount.lower()) for o in w["ops"])]
+                if offers:
+                    w = min(offers, key=dist)
+                    if dist(w) <= dist(min(box, key=dist)) + 60 ** 2:     # still this product's row
+                        op = next(o for o in w["ops"] if o.lower().endswith(" " + amount.lower()))
+                        stacked = any(o is not w and abs(center(o)[0] - center(w)[0]) < 4
+                                      and abs(center(o)[1] - center(w)[1]) < 4 for o in box)
+                        log.info("Make box: %s %s", op, want)
+                        return choose(ctx, gs, w, op, menu=stacked)
+            target = min(box, key=dist)
         else:
             named = [w for w in box if any(want in o.lower() for o in w["ops"])]
             target = named[0] if named else target

@@ -100,6 +100,10 @@ class SupplyTask(BotBase):
             self.state = "stopped"
             self.inp.close()
 
+    def keep(self, key):
+        """Products worth keeping through a restock (they stack: one slot)."""
+        return False
+
     def setup(self):
         """Once at the start, after the game data is there (e.g. unlock the skill)."""
 
@@ -140,7 +144,7 @@ class SupplyTask(BotBase):
         where we started, spawn a backpack of the best supply."""
         from lumberjack.core import backpack, gamestate
         junk = [i for i, s in enumerate(inv) if s["id"] >= 0 and i not in tools.values()
-                and s["key"] != "coins" and backpack.kind(s["key"]) != "cooked"]
+                and s["key"] != "coins" and backpack.kind(s["key"]) != "cooked" and not self.keep(s["key"])]
         if junk:
             self.state = "dropping"
             actions.drop_known(self.ctx, self.gs, junk)
@@ -304,10 +308,32 @@ class Smither(SupplyTask):
         end = time.monotonic() + 6                  # we may walk to the anvil first
         while time.monotonic() < end:
             self.sleep(0.4)
-            if widgets.make(self.ctx, self.gs, product=self.PRODUCT, amounts=("All", "10", "5")):
+            if widgets.make(self.ctx, self.gs, product=self.PRODUCT, amounts=("All", "10", "5")) \
+                    or self.click_smith_all():
                 self.inp.move(260, 300)
                 return self.wait_used({kind}, still_s=6.0, start=before)
+        self.log.warning("The smithing screen never offered '%s' - %s", self.PRODUCT,
+                         "it didn't open" if not self.smith_screen() else "its buttons didn't match")
         return 0
+
+    SMITH_IF = 300              # the smithing screen
+    SMITH_ALL_BUTTON = 21       # the dagger's "All" button (server: SmithingType.TYPE_DAGGER {24,23,22,21} = 1,5,X,All)
+
+    def smith_screen(self):
+        from lumberjack.ui import widgets
+        return [w for w in widgets.find(self.gs, str(self.SMITH_IF)) if w.get("if") == self.SMITH_IF]
+
+    def click_smith_all(self):
+        """The smithing screen is up but its buttons carry no 'Make ...' text: click the
+        dagger's All button by its component number."""
+        from lumberjack.ui import widgets
+        btn = next((w for w in self.smith_screen() if w.get("idx") == self.SMITH_ALL_BUTTON and w["w"] > 0), None)
+        if btn is None:
+            return False
+        x, y = widgets.center(btn)
+        self.log.info("Smithing screen: clicking the dagger's All button")
+        self.inp.click(x, y)
+        return True
 
 
 # ---- Herblore ----------------------------------------------------------------------------------
@@ -435,6 +461,7 @@ ALTARS = [
     (54, "law_rune", (2464, 4819, 0)),
 ]
 ALTAR_RADIUS = 20
+ALTAR_IDS = {2478, 2479, 2480, 2481, 2482, 2483, 2484, 2485, 2486}   # air ... nature (server: Altar.kt)
 
 
 def best_altar(level):
@@ -466,6 +493,7 @@ class Runecrafter(SupplyTask):
         self.log.info("Runecrafting %s runes (level %d+) - teleporting to the altar", rune.split("_")[0], lv)
         if not places.teleport(self.ctx, self.gs, (x, y), plane):
             raise StopBot(f"couldn't teleport to the {rune.split('_')[0]} altar (::tele {x} {y} {plane})")
+        actions.reset_camera(self.ctx)              # the altar has to be on screen to click it
         self.altar, self.home = altar, [x, y]
 
     def restock(self, inv, tools):
@@ -475,15 +503,18 @@ class Runecrafter(SupplyTask):
 
     def process(self, inv, supply_slots, tools):
         from lumberjack.core import interact
+        from lumberjack.core.gamestate import top_entry
         before = len(supply_slots)
-        altars = [l for l in self.gs.locs(ALTAR_RADIUS, "altar")
-                  if l["name"] == "Altar" and "Craft-rune" in (l.get("ops") or [])]
-        if not altars:
+        a = self.find_altar()
+        if a is None:
             raise StopBot("no runecrafting altar here - the teleport went somewhere else")
-        a = altars[0]
-        if not interact.use_option(self.ctx, self.gs, interact.points_for(a), "Craft-rune", "Altar"):
-            interact.walk_to_tile(self.ctx, self.gs, a["tile"], arrive=3)    # off screen: get closer
-            return 0
+        if not interact.use_option(self.ctx, self.gs, interact.points_for(a), "Craft-rune", a["name"]):
+            self.log.info("Couldn't click Craft-rune on the altar (%d tiles away, menu: %s) - walking up to it",
+                          a.get("dist", -1), (top_entry(self.gs.menu()) or {}).get("verb"))
+            interact.walk_to_tile(self.ctx, self.gs, a["tile"], arrive=1)
+            a = self.find_altar() or a
+            if not interact.use_option(self.ctx, self.gs, interact.points_for(a), "Craft-rune", a["name"]):
+                return 0
         end = time.monotonic() + 15                 # walk over, then every essence at once
         while time.monotonic() < end:
             self.sleep(0.6)
@@ -492,6 +523,18 @@ class Runecrafter(SupplyTask):
                 self.sleep(0.6)
                 return before - self.count({"pure_essence"})
         return 0
+
+    def keep(self, key):
+        return bool(key) and key.endswith("_rune")      # crafted runes stack - Magic can use them
+
+    def find_altar(self):
+        """The altar in this room: by its object id (the server's Altar table) or by name +
+        its Craft-rune option."""
+        for l in self.gs.locs(ALTAR_RADIUS):
+            ops = [o.lower() for o in l.get("ops") or []]
+            if l.get("id") in ALTAR_IDS or (l["name"].lower() == "altar" and "craft-rune" in ops):
+                return l
+        return None
 
     def walk_home(self):
         pass                                        # the altar room is small: stay by the altar
