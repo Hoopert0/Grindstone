@@ -1,0 +1,18 @@
+# debug screenshots and scratch output
+lumberjack/captures/
+__pycache__/
+*.pyc
+
+# map backups made while experimenting
+lumberjack/assets/maps/*_backup*
+
+# per-PC panel settings
+lumberjack/configs/
+
+# server/panel output from 'lumberjack start'
+logs/
+
+# your own game data and places stay on your PC
+save/
+lumberjack/assets/places.json
+lumberjack/assets/fishing_spots.json

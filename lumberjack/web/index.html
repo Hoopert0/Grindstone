@@ -1,0 +1,1249 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grindstone</title>
+<link rel="icon" type="image/png" href="/icon.png">
+<style>
+  :root {
+    --bg: #14120f; --panel: #1f1b16; --panel2: #2a241d; --line: #3a3127;
+    --text: #e9e1d3; --muted: #a39682; --gold: #e2b54a; --green: #6fcf6f;
+    --red: #e06a5a; --blue: #6aa8e0;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.45 system-ui, "Segoe UI", sans-serif; }
+  header { display: flex; align-items: center; gap: 12px; padding: 14px 20px;
+           border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  header h1 { margin: 0; font-size: 18px; letter-spacing: .5px; }
+  header h1 span { color: var(--gold); }
+  .pill { padding: 3px 10px; border-radius: 999px; font-size: 12px; background: var(--panel2);
+          color: var(--muted); border: 1px solid var(--line); }
+  .pill.run { color: var(--green); border-color: #2f5a2f; }
+  .pill.pause { color: var(--gold); border-color: #6a5420; }
+  .pill.err { color: var(--red); border-color: #6a2a20; }
+  .pill.rec { color: var(--red); border-color: #6a2a20; }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px; padding: 16px 20px;
+         max-width: 1340px; margin: 0 auto; }
+  @media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
+  aside { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+  .card h2 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: 1px;
+             color: var(--muted); font-weight: 600; }
+  .view img { width: 100%; display: block; border-radius: 6px; image-rendering: pixelated;
+              background: #000; aspect-ratio: 765 / 503; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 12px; }
+  @media (max-width: 560px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+  .stat { background: var(--panel2); border-radius: 8px; padding: 10px; min-width: 0; }
+  .stat b { display: block; font-size: 20px; font-variant-numeric: tabular-nums;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .stat small { color: var(--muted); }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .row > * { min-width: 0; }
+  button { padding: 9px 10px; border-radius: 8px; border: 1px solid var(--line);
+           background: var(--panel2); color: var(--text); font: inherit; font-weight: 600; cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--gold); }
+  button:disabled { opacity: .4; cursor: default; }
+  button.go { background: #2f5a2f; border-color: #3f7a3f; }
+  button.stop { background: #5a2a24; border-color: #7a3a30; }
+  .grow { flex: 1; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .group { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 10px 0 4px; }
+  .opt.wide { display: block; }
+  .opt.wide span { padding: 10px 6px; font-size: 15px; }
+  body.gd .pixel-only { display: none; }
+  details.fold > summary, details.sub > summary { cursor: pointer; list-style: revert; }
+  details.sub { margin-top: 8px; }
+  details.fold .sub { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 10px; }
+  @media (max-width: 560px) { .grid4 { grid-template-columns: repeat(2, 1fr); } }
+  .field { margin-bottom: 14px; }
+  .field:last-child { margin-bottom: 0; }
+  .field > label { display: block; color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+  .opt { position: relative; }
+  .opt input { position: absolute; opacity: 0; }
+  .opt span { display: block; text-align: center; padding: 8px 4px; border-radius: 8px;
+              background: var(--panel2); border: 1px solid var(--line); cursor: pointer; font-size: 13px; }
+  .opt span small { display: block; color: var(--muted); font-size: 11px; }
+  .opt input:checked + span { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold) inset; }
+  .opt input:disabled + span { opacity: .45; cursor: not-allowed; }
+  .opt input:focus-visible + span { outline: 2px solid var(--blue); }
+  input[type=range] { flex: 1; accent-color: var(--gold); }
+  input[type=number], input[type=text], select {
+    width: 100%; padding: 8px; border-radius: 8px; border: 1px solid var(--line);
+    background: var(--panel2); color: var(--text); font: inherit; }
+  .radios { display: flex; flex-direction: column; gap: 6px; }
+  .radios label { display: flex; align-items: center; gap: 8px; background: var(--panel2);
+                  border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; cursor: pointer; }
+  .radios input { accent-color: var(--gold); }
+  .radios label { flex-wrap: wrap; }
+  .radios label > .hint { flex-basis: 100%; padding-left: 24px; margin: -2px 0 0 !important; }
+  details.items-group { border-top: 1px solid var(--line); padding: 6px 0; }
+  details.items-group > summary { cursor: pointer; }
+  .radios select { padding: 4px 6px; }
+  .spots { display: flex; flex-direction: column; gap: 6px; }
+  .spot { display: flex; align-items: center; gap: 8px; background: var(--panel2); border: 1px solid var(--line);
+          border-radius: 8px; padding: 6px 8px; }
+  .spot input { accent-color: var(--gold); }
+  .spot .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .spot .nm small { display: block; color: var(--muted); font-size: 11px; }
+  .spot button { padding: 3px 9px; font-size: 12px; }
+  .tag { font-size: 10px; padding: 1px 6px; border-radius: 999px; background: #233042; color: var(--blue);
+         margin-left: 4px; vertical-align: 1px; }
+  .log { height: 240px; overflow: auto; font: 12px/1.5 ui-monospace, Consolas, monospace;
+         background: #0e0c0a; border-radius: 6px; padding: 8px; color: #cfc4b0; white-space: pre-wrap; }
+  .msg { min-height: 18px; color: var(--red); font-size: 13px; margin-top: 8px; }
+  .hint { color: var(--muted); font-size: 12px; margin-top: 6px; }
+  .empty { color: var(--muted); font-size: 13px; }
+  kbd { background: var(--panel2); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; }
+  hr { border: 0; border-top: 1px solid var(--line); margin: 14px 0; }
+  .items-group { margin-bottom: 12px; }
+  .items-group h3 { margin: 0 0 6px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+  .item { display: grid; grid-template-columns: 1fr auto auto auto; gap: 6px; align-items: center;
+          padding: 5px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .item small { display: block; color: var(--muted); font-size: 11px; }
+  .item code { font: 12px ui-monospace, Consolas, monospace; color: var(--gold); background: #0e0c0a;
+               padding: 2px 6px; border-radius: 4px; cursor: copy; }
+  .item input { width: 64px; padding: 4px; }
+  .item button { padding: 4px 10px; font-size: 12px; }
+  .tabs { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; background: var(--panel);
+          border: 1px solid var(--line); border-radius: 10px; padding: 4px; }
+  .tabs button { padding: 8px 4px; border: 0; background: transparent; color: var(--muted); font-size: 13px; }
+  .tabs button[aria-selected="true"] { background: var(--panel2); color: var(--text);
+                                        box-shadow: inset 0 -2px 0 var(--gold); }
+  .tabpanel { display: flex; flex-direction: column; gap: 16px; }
+  .tabpanel[hidden] { display: none; }
+  .need { background: #3a2a14; border: 1px solid #6a5420; color: var(--gold); border-radius: 8px;
+          padding: 8px 10px; font-size: 13px; margin-top: 8px; }
+  .need ul { margin: 4px 0 0 18px; padding: 0; }
+  .xp { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; font-variant-numeric: tabular-nums; }
+  .xp th { text-align: left; color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase;
+           letter-spacing: .5px; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+  .xp td { padding: 6px; border-bottom: 1px solid var(--line); }
+  .xp td small { color: var(--green); }
+  @media (max-width: 560px) { .xp th:nth-child(5), .xp td:nth-child(5) { display: none; } }
+  .need.ok { background: #18301a; border-color: #2f5a2f; color: var(--green); }
+  .need.info { background: var(--panel2); border-color: var(--line); color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>⚙️ <span>Grind</span>stone</h1>
+  <span id="pill" class="pill">idle</span>
+  <span id="recpill" class="pill rec" hidden>● recording</span>
+  <span id="levels" class="pill" hidden></span>
+  <span id="version" class="pill" title="Bot version (code commits). Updates arrive when Grindstone starts, or with the Update button."></span>
+  <button id="update" class="pill pause" type="button" hidden title="Download the newest version and restart the panel">update available</button>
+  <span id="where" class="hint" style="margin:0 0 0 auto"></span>
+</header>
+
+<main>
+  <section>
+    <div class="card view">
+      <h2>Bot vision</h2>
+      <img id="view" src="/stream.mjpg" alt="Live view of what the bot sees">
+      <div class="stats">
+        <div class="stat"><b id="s-logs">0</b><small id="l-logs">logs cut</small></div>
+        <div class="stat"><b id="s-rate">–</b><small id="l-rate">logs / hour</small></div>
+        <div class="stat"><b id="s-time">0:00</b><small>running</small></div>
+        <div class="stat"><b id="s-state">idle</b><small>doing</small></div>
+        <div class="stat"><b id="s-banked">0</b><small>bank trips</small></div>
+        <div class="stat"><b id="s-burned">0</b><small>fires lit</small></div>
+        <div class="stat" id="t-fletched"><b id="s-fletched">0</b><small>logs fletched</small></div>
+        <div class="stat" id="t-cooked" hidden><b id="s-cooked">0</b><small>fish cooked</small></div>
+        <div class="stat" id="t-burnt" hidden><b id="s-burnt">0</b><small>fish burnt</small></div>
+        <div class="stat" id="t-eaten" hidden><b id="s-eaten">0</b><small>food eaten</small></div>
+      </div>
+      <table class="xp" id="xp" hidden>
+        <thead><tr><th>Skill</th><th>Level</th><th>XP gained</th><th>XP / hour</th><th>To next level</th><th>Time to level</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px">
+        <h2 style="margin:0">Activity</h2>
+        <button id="copylog" type="button" title="Copy the whole log to the clipboard">📋 Copy</button>
+      </div>
+      <div id="log" class="log"></div>
+    </div>
+  </section>
+
+  <aside>
+    <!-- Controls -->
+    <div class="card">
+      <h2>Controls</h2>
+      <div class="field">
+        <label>Task</label>
+        <label class="opt wide"><input type="radio" name="task" value="autopilot"><span>🤖 Autopilot<small>trains the whole account by itself</small></span></label>
+        <div class="group">Gathering</div>
+        <div class="grid3">
+          <label class="opt"><input type="radio" name="task" value="woodcutting" checked><span>🪓 Woodcutting</span></label>
+          <label class="opt"><input type="radio" name="task" value="fishing"><span>🎣 Fishing<small>+ cooking</small></span></label>
+          <label class="opt"><input type="radio" name="task" value="mining"><span>⛏️ Mining</span></label>
+        </div>
+        <div class="group">Fighting</div>
+        <div class="grid4">
+          <label class="opt"><input type="radio" name="task" value="combat"><span>⚔️ Combat<small>melee</small></span></label>
+          <label class="opt"><input type="radio" name="task" value="ranged"><span>🎯 Ranged</span></label>
+          <label class="opt"><input type="radio" name="task" value="magic"><span>🪄 Magic</span></label>
+          <label class="opt"><input type="radio" name="task" value="thieving"><span>🧤 Thieving</span></label>
+        </div>
+        <div class="group">Making</div>
+        <div class="grid3">
+          <label class="opt"><input type="radio" name="task" value="firemaking"><span>🔥 Firemaking</span></label>
+          <label class="opt"><input type="radio" name="task" value="cooking"><span>🍳 Cooking</span></label>
+          <label class="opt"><input type="radio" name="task" value="prayer"><span>🦴 Prayer</span></label>
+          <label class="opt"><input type="radio" name="task" value="fletching"><span>🏹 Fletching</span></label>
+          <label class="opt"><input type="radio" name="task" value="crafting"><span>💎 Crafting</span></label>
+          <label class="opt"><input type="radio" name="task" value="smithing"><span>🔨 Smithing</span></label>
+        </div>
+      </div>
+      <div class="row">
+        <button id="start" class="go grow">Start</button>
+        <button id="pause" class="grow" disabled>Pause</button>
+        <button id="stop" class="stop grow" disabled>Stop</button>
+      </div>
+      <div id="msg" class="msg"></div>
+      <div id="stopped" class="need" hidden></div>
+      <div id="planstatus" class="need info" hidden></div>
+      <div id="need"></div>
+      <div class="hint"><kbd>F12</kbd> stops the bot from anywhere.</div>
+    </div>
+
+    <nav class="tabs" role="tablist" aria-label="Settings">
+      <button role="tab" data-tab="task" aria-selected="true">Settings</button>
+      <button role="tab" data-tab="plan">Plan</button>
+      <button role="tab" data-tab="places">Places</button>
+      <button role="tab" data-tab="tools">Tools</button>
+    </nav>
+
+    <div class="tabpanel" data-tab="task" role="tabpanel">
+    <!-- Autopilot -->
+    <div class="card" id="ap-card" hidden>
+      <h2>🤖 Autopilot</h2>
+      <div class="hint" style="margin:0 0 10px">Trains every skill by itself - even a brand-new account in Lumbridge:
+        combat basics first (Attack/Strength/Defence 10), a quick Prayer to 43, then always the lowest skill up to
+        its next milestone (a better spot or every 10 levels), at the best spot for the level, 30 minutes at a time.
+        It spawns tools, food and supplies and wears the best gear for its levels.</div>
+      <div class="field">
+        <label>Every skill to level</label>
+        <input id="aptarget" type="number" min="2" max="99" value="99" style="width:80px">
+      </div>
+      <div class="field">
+        <label>Leave out</label>
+        <div id="apskip" class="grid3"></div>
+      </div>
+      <div class="hint">Stop after (below), and the Plan tab's options - updates between steps, resume after a restart,
+        travel by teleport - apply too.</div>
+    </div>
+
+    <!-- Firemaking task -->
+    <div class="card" id="fm-card" hidden>
+      <h2>Firemaking</h2>
+      <div class="hint" style="margin:0 0 8px">With <i>Spawn missing tools</i> on: spawns the best logs your level can
+        light and burns them where you stand - nothing to set up.</div>
+      <details class="sub"><summary>Burn banked logs instead (with <i>Spawn missing tools</i> off)</summary>
+      <div class="field">
+        <label>Logs to burn (best you can light goes first)</label>
+        <div id="fm_logs" class="grid3"></div>
+      </div>
+      <div class="field">
+        <label>Burn at (an open spot near the bank — fires can't be lit indoors)</label>
+        <select id="burn_spot"></select>
+      </div>
+      <div class="hint">Loop: bank → withdraw logs → walk to the burn spot → light them all → repeat until the bank runs out. Keeps your tinderbox (fetches one from the bank if needed).<span class="pixel-only"> Uses Map, Bank at and Start from (Tools › Maps).</span></div>
+      </details>
+    </div>
+
+    <!-- Fishing task -->
+    <div class="card" id="fish-card" hidden>
+      <h2>Fishing</h2>
+      <div class="field">
+        <label>Method</label>
+        <select id="fish_method"></select>
+        <div class="radios" style="margin-top:6px">
+          <label><input id="auto_fish" type="checkbox"> Switch method as my Fishing level goes up
+            <span class="hint" style="margin:0">(net → bait at 5 on the same spot; lure / cage / harpoon once calibrated and saved as a Fishing spot)</span></label>
+        </div>
+      </div>
+      <div class="field">
+        <div class="radios">
+          <label><input id="cook" type="checkbox" checked> Cook the catch on a fire
+            <span class="hint" style="margin:0">(chops a log, lights it, Cook All)</span></label>
+        </div>
+      </div>
+      <div class="field" id="cook-opts">
+        <label>Fire logs from</label>
+        <div id="fire_trees" class="grid3"></div>
+        <label style="margin-top:8px">Cooked fish</label>
+        <div class="grid2">
+          <label class="opt"><input type="radio" name="cooked" value="drop" checked><span>Drop<small>for the XP</small></span></label>
+          <label class="opt"><input type="radio" name="cooked" value="bank"><span>Bank<small>bank $ icon on the minimap, or a map</small></span></label>
+        </div>
+      </div>
+      <div class="hint">Loop: fish until the backpack is nearly full → chop 1–2 logs → light a fire → use the raw fish on it → Cook All → drop the burnt (and cooked) fish → repeat. Carry only your tools: fishing net, tinderbox, axe.<span class="pixel-only"> Uses Map, Fish at and Bank at (Tools › Maps).</span></div>
+      <div class="pixel-only">
+      <hr>
+      <div class="field">
+        <label>Calibrate (in game, once) — <span id="fish-ready" class="hint" style="margin:0"></span></label>
+        <ol class="hint" style="margin:4px 0 8px 18px;padding:0">
+          <li>Stand by a fishing spot (ripples in view): <button id="fl-spot" type="button">Learn fishing spot</button></li>
+          <li>Put each fish in the backpack, pick its slot and name: learn raw, cooked (teaches <i>Eat</i>) and burnt.
+            <div class="row" style="margin-top:4px">
+              <input id="fl_slot" type="number" min="1" max="28" value="5" style="width:70px" aria-label="backpack slot">
+              <select id="fl_name" class="grow" aria-label="item name"></select>
+              <button id="fl-item" type="button">Learn item</button>
+            </div></li>
+          <li>Light a fire (Manual &gt; Burn logs), keep a raw fish: <button id="fl-fire" type="button">Learn fire</button></li>
+          <li>With raw fish and a fire next to you: <button id="fl-cook" type="button">Test cooking</button></li>
+          <li>Any time at a fishing spot: <button id="fl-test" type="button">Test vision</button> — the Activity log lists the spots it sees.</li>
+        </ol>
+        <div id="fishmsg" class="msg"></div>
+      </div>
+      </div>
+    </div>
+
+    <!-- Mining task -->
+    <div class="card" id="mine-card" hidden>
+      <h2>Mining</h2>
+      <div class="field">
+        <div class="radios">
+          <label><input id="auto_ores" type="checkbox"> Best ore for my Mining level
+            <span class="hint" style="margin:0">(prefers ores with a rock spot saved on the map)</span></label>
+        </div>
+      </div>
+      <div class="field" id="ore-pick">
+        <label>Ores to mine</label>
+        <div id="ores" class="grid3"></div>
+        <div class="hint">Tick several and the bot goes for the best one in view.</div>
+      </div>
+      <div class="field">
+        <label>When the inventory fills up</label>
+        <div class="grid2">
+          <label class="opt"><input type="radio" name="minefull" value="drop" checked><span>Drop ore<small>for the XP</small></span></label>
+          <label class="opt"><input type="radio" name="minefull" value="bank"><span>Bank<small>needs a map + bank spot</small></span></label>
+        </div>
+      </div>
+      <div class="hint">Carry only your pickaxe.<span class="pixel-only"> Uses Map, Mine at and Bank at (Tools › Maps).</span></div>
+      <div class="pixel-only">
+      <hr>
+      <div class="field">
+        <label>Calibrate (in game, once) — <span id="mine-ready" class="hint" style="margin:0"></span></label>
+        <ol class="hint" style="margin:4px 0 8px 18px;padding:0">
+          <li>Stand right next to a rock (Manual &gt; Reset camera): <button id="ml-rock" type="button">Learn rock</button></li>
+          <li>At a mine: <button id="ml-test" type="button">Test vision</button> — the Activity log lists the rocks and ores it sees.</li>
+        </ol>
+        <div id="minemsg" class="msg"></div>
+      </div>
+      </div>
+    </div>
+
+    <!-- Combat task -->
+    <div class="card" id="combat-card" hidden>
+      <h2>Combat</h2>
+      <div class="field">
+        <label>Monsters to fight</label>
+        <div id="targets" class="grid3"></div>
+      </div>
+      <div class="field">
+        <label>Train</label>
+        <select id="train">
+          <option value="auto">Lowest melee stat (switches style)</option>
+          <option value="attack">Attack only</option>
+          <option value="strength">Strength only</option>
+          <option value="defence">Defence only</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Food (cooked fish in the backpack)</label>
+        <div id="foods" class="grid3"></div>
+        <label style="margin-top:8px">Eat below <b id="eatv">50</b>% HP</label>
+        <div class="row"><input id="eat_below" type="range" min="20" max="80" step="5" value="50"></div>
+      </div>
+      <div class="field">
+        <label>Loot (picked up after each kill)</label>
+        <div id="loot" class="grid3"></div>
+        <div class="radios" style="margin-top:6px">
+          <label><input id="bury_bones" type="checkbox"> Bury bones
+            <span class="hint" style="margin:0">(Prayer XP; needs Bones ticked)</span></label>
+        </div>
+      </div>
+      <div class="hint">Wield a weapon, carry food. Fights next to you first, then walks toward monsters on the minimap<span class="pixel-only">, then to Fight at (Tools › Maps)</span>.</div>
+      <div class="pixel-only">
+      <hr>
+      <div class="field">
+        <label>Calibrate (in game, once per monster) — <span id="combat-ready" class="hint" style="margin:0"></span></label>
+        <ol class="hint" style="margin:4px 0 8px 18px;padding:0">
+          <li>Stand next to the monster (Manual &gt; Reset camera), type its name:
+            <div class="row" style="margin-top:4px">
+              <input id="cb_name" type="text" placeholder="e.g. chicken" class="grow">
+              <button id="cb-npc" type="button">Learn monster</button>
+            </div></li>
+          <li>Food: Fishing &gt; Learn item on each cooked fish you'll carry.</li>
+          <li>Loot: kill one, stand on the drop, type the item's name (e.g. bones):
+            <div class="row" style="margin-top:4px">
+              <input id="lt_name" type="text" placeholder="e.g. bones" class="grow">
+              <button id="cb-loot" type="button">Learn loot</button>
+            </div></li>
+          <li>With bones in the backpack: <button id="cb-bury" type="button">Learn bury</button></li>
+          <li>Next to monsters: <button id="cb-test" type="button">Test vision</button> — the Activity log shows what it sees.</li>
+        </ol>
+        <div id="combatmsg" class="msg"></div>
+      </div>
+      </div>
+    </div>
+
+    <!-- Woodcutting task -->
+    <div class="card" id="wc-card">
+      <h2>Woodcutting</h2>
+      <div class="field">
+        <div class="radios">
+          <label><input id="auto_trees" type="checkbox">
+            Best trees for my levels
+            <span class="hint" style="margin:0">(reads the Stats tab; with Burn, only logs you can light)</span></label>
+        </div>
+      </div>
+      <div class="field" id="tree-pick">
+        <label>Trees to chop</label>
+        <div id="trees" class="grid3"></div>
+        <div class="hint">Tick several and the bot goes for the best one in view.</div>
+      </div>
+      <div class="field">
+        <label>When the inventory fills up</label>
+        <div id="actions" class="grid2"></div>
+      </div>
+      <div class="field">
+        <label>Inventory counts as full at <b id="dropv">28</b> items</label>
+        <div class="row"><input id="drop_at" type="range" min="1" max="28" value="28"></div>
+      </div>
+    </div>
+
+    <!-- every task -->
+    <div class="card">
+      <h2>Run options</h2>
+      <div class="field">
+        <div class="radios">
+          <label><input id="recover" type="checkbox" checked>
+            Keep going after problems
+            <span class="hint" style="margin:0">(a crash, getting stuck or dying restarts the task where it was;
+              needs the game's own data)</span></label>
+          <label><input id="clear_at_start" type="checkbox" checked>
+            Drop materials at Start
+            <span class="hint" style="margin:0">(logs, ore, fish, bones, hides... so a restart has room - tools stay; not for Firemaking)</span></label>
+          <label><input id="keep_carried" type="checkbox" checked>
+            Keep what I'm carrying when I press Start
+            <span class="hint" style="margin:0">(e.g. an axe you can't wield yet, your fishing net)</span></label>
+          <label><input id="spawn_tools" type="checkbox" checked>
+            Spawn missing tools
+            <span class="hint" style="margin:0">(axe / knife / tinderbox / fishing gear via ::item)</span></label>
+        </div>
+      </div>
+      <div class="field">
+        <label>Stop after (blank = never)</label>
+        <div class="grid2">
+          <input id="max_minutes" type="number" min="1" placeholder="minutes">
+          <input id="max_logs" type="number" min="1" placeholder="logs">
+        </div>
+      </div>
+    </div>
+    </div>
+
+    <!-- Plan: several tasks in a row, non-stop -->
+    <div class="card tabpanel" data-tab="plan" role="tabpanel" hidden>
+      <h2>Plan</h2>
+      <div class="hint" style="margin:0 0 10px">Run tasks one after another, non-stop. Each step travels to its place,
+        banks or drops what the last task left, then runs the task with its settings from the Settings tab.
+        A step that gets stuck is recovered and retried. For the whole account in one click, pick
+        🤖 Autopilot under Controls instead.</div>
+      <div id="plansteps"></div>
+      <div class="row" style="margin-top:6px">
+        <button id="planadd" type="button">+ Add step</button>
+        <button id="planstarter" type="button" title="Every skill: woodcutting, fishing, mining, combat, thieving 30 min each at the best spot for your level; firemaking, cooking, prayer, fletching, crafting 20 min each (spawned supplies), at the best spot for your level, lowest skill first, looping">★ Starter plan</button>
+      </div>
+      <div class="field" style="margin-top:10px">
+        <div class="radios">
+          <label><input id="planloop" type="checkbox" checked> Loop - start over after the last step</label>
+          <label>Stop the plan after <input id="planhours" type="number" min="0.5" step="0.5" placeholder="∞" style="width:70px"> hours</label>
+          <label><input id="planupdate" type="checkbox"> Update between steps
+            <span class="hint" style="margin:0">(a newer version on GitHub: download it, restart the panel, carry on)</span></label>
+          <label><input id="planresume" type="checkbox" checked> Resume after the panel restarts
+            <span class="hint" style="margin:0">(an update, a crash - Stop cancels it)</span></label>
+          <label><input id="planlowest" type="checkbox"> Lowest level first
+            <span class="hint" style="margin:0">(next = the step whose skill is lowest; steps at their target level are skipped)</span></label>
+          <label><input id="plantele" type="checkbox" checked> Travel by teleport
+            <span class="hint" style="margin:0">(::tele, singleplayer admin; else walking)</span></label>
+        </div>
+      </div>
+      <div class="row">
+        <button id="planstart" class="go grow" type="button">Start plan</button>
+      </div>
+      <div id="planmsg" class="msg"></div>
+      <hr>
+      <div class="field">
+        <label>Last 24 hours</label>
+        <div id="history" class="hint" style="margin:0">No runs yet.</div>
+      </div>
+    </div>
+
+    <!-- Places -->
+    <div class="card tabpanel" data-tab="places" role="tabpanel" hidden>
+      <h2>Places</h2>
+      <div class="field">
+        <label>Places - stand where a task should run, name it, save</label>
+        <div class="hint" style="margin:0 0 6px">★ = built in (used by "auto"). Their spots are approximate: if one is off,
+          stand at the right spot and save it under the same name - yours wins.</div>
+        <div class="row">
+          <input id="placename" type="text" placeholder="e.g. draynor fish" class="grow">
+          <button id="placesave" type="button">Save here</button>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <button id="placecheck" type="button" title="Teleports to each ★ place and looks for its trees/rocks/fishing spots/monsters in the game data; a place that's off is moved to them">Check ★ places</button>
+          <span id="placecheckmsg" class="hint" style="margin:0"></span>
+        </div>
+        <div id="placecheckres" class="hint" style="margin:4px 0 0"></div>
+        <div id="placelist" class="spots" style="margin-top:8px"></div>
+      </div>
+    </div>
+
+    <!-- Tools -->
+    <div class="tabpanel" data-tab="tools" role="tabpanel" hidden>
+    <!-- Manual controls -->
+    <div class="card">
+      <h2>Manual controls</h2>
+      <div class="grid3">
+        <button data-action="teleport">Home Teleport</button>
+        <button data-action="drop_all" title="Drop logs, ore, fish (cooked too), bones, hides... - tools stay">Drop materials</button>
+        <button data-action="reset_camera">Reset camera</button>
+        <button data-action="bank_now" title="Open a nearby booth and deposit everything except a tinderbox">Bank now</button>
+        <button data-action="get_tinderbox" title="Withdraw a tinderbox at a nearby booth">Get tinderbox</button>
+        <button data-action="burn" title="Light every log in the backpack">Burn logs</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <select id="goto_spot" class="grow"></select>
+        <button id="goto">Walk there</button>
+      </div>
+      <div id="manmsg" class="msg"></div>
+    </div>
+
+    <div class="card">
+      <h2>Item spawner</h2>
+      <div class="hint" style="margin:0 0 10px">Singleplayer admin commands. <b>Spawn</b> types the command
+        into game chat for you; or copy the code and type it yourself. Needs a free backpack slot.</div>
+      <div id="itemlist"></div>
+      <div id="itemmsg" class="msg"></div>
+    </div>
+
+    <details class="card fold">
+      <summary><h2 style="display:inline">Maps & route</h2> <span class="hint" style="margin:0">- only for the older
+        screen-reading mode; with the game's own data the bot finds its own way</span></summary>
+    <!-- Route -->
+    <div class="sub">
+      <h2>Route</h2>
+      <div class="field">
+        <label>Map</label>
+        <select id="map"><option value="">None (no walking)</option></select>
+      </div>
+      <div class="field">
+        <label>Start from</label>
+        <div class="radios">
+          <label><input type="radio" name="start" value="here" checked> Where I am now</label>
+          <label><input type="radio" name="start" value="teleport"> Home Teleport (Lumbridge) first</label>
+          <label><input type="radio" name="start" value="spot"> I'm at
+            <select id="start_spot" class="grow"></select></label>
+        </div>
+      </div>
+      <div class="field">
+        <label>Chop at</label>
+        <select id="chop_spot"></select>
+      </div>
+      <div class="field">
+        <label>Fish at (Fishing task)</label>
+        <select id="fish_spot"></select>
+      </div>
+      <div class="field">
+        <label>Mine at (Mining task)</label>
+        <select id="mine_spot"></select>
+      </div>
+      <div class="field">
+        <label>Fight at (Combat task)</label>
+        <select id="fight_spot"></select>
+      </div>
+      <div class="field">
+        <label>Bank at (when "Bank" is picked above)</label>
+        <select id="bank_spot"></select>
+      </div>
+      <div class="field">
+        <label>Spots the bot may walk between when trees run out</label>
+        <div id="spots" class="spots"></div>
+      </div>
+    </div>
+
+    <!-- Map tools -->
+    <div class="sub">
+      <h2>Map tools</h2>
+      <div class="field">
+        <label>Record a map — press Record, walk the area, press Stop</label>
+        <div class="row">
+          <input id="recname" type="text" placeholder="map name">
+          <button id="recnew">Record new</button>
+          <button id="recext">Extend</button>
+        </div>
+        <div class="row" style="margin-top:6px">
+          <button id="recstop" class="stop grow" disabled>Stop recording</button>
+        </div>
+        <div id="recinfo" class="hint"></div>
+      </div>
+      <hr>
+      <div class="field">
+        <label>Save spot here (on the map picked above)</label>
+        <div class="row">
+          <input id="spotname" type="text" placeholder="spot name">
+          <select id="spotkind" style="width:auto"><option value="trees">Trees</option><option value="bank">Bank</option><option value="fish">Fishing</option><option value="rocks">Rocks</option><option value="combat">Combat</option></select>
+          <button id="savespot">Save</button>
+        </div>
+        <div class="hint">A tree spot remembers the trees ticked above; a rocks spot the ores; a fishing spot the methods of the one picked under Fishing (net/bait, lure/bait, cage/harpoon).</div>
+      </div>
+      <hr>
+      <div class="field">
+        <label>Learn a new tree name (stand right next to one)</label>
+        <div class="row">
+          <input id="learnname" type="text" placeholder="e.g. willow">
+          <button id="learn">Learn</button>
+        </div>
+      </div>
+      <div id="toolmsg" class="msg"></div>
+    </div>
+    </details>
+    </div>
+  </aside>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+let running = false, mapsData = {}, savedSpots = null, saved = {};
+
+function fmtTime(s) {
+  const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), sec = s % 60;
+  return h ? `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}` : `${m}:${String(sec).padStart(2, "0")}`;
+}
+
+async function post(url, body, msgEl) {
+  if (msgEl) msgEl.textContent = "";
+  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" },
+                               body: body ? JSON.stringify(body) : undefined });
+  const j = await r.json().catch(() => ({ ok: r.ok }));
+  if (!j.ok && msgEl) msgEl.textContent = j.error || "Something went wrong";
+  return j;
+}
+
+function settings() {
+  const num = (id) => $(id).value ? Number($(id).value) : null;
+  const map = $("map").value || null;
+  return {
+    trees: [...document.querySelectorAll("input[name=tree]:checked")].map(el => el.value),
+    when_full: document.querySelector("input[name=full]:checked")?.value || "drop",
+    drop_at: Number($("drop_at").value),
+    max_minutes: num("max_minutes"),
+    max_logs: num("max_logs"),
+    map,
+    spots: map ? [...document.querySelectorAll("input[name=spot]:checked")].map(el => el.value) : null,
+    start_mode: document.querySelector("input[name=start]:checked")?.value || "here",
+    start_spot: $("start_spot").value || null,
+    chop_spot: $("chop_spot").value || null,
+    bank_spot: $("bank_spot").value || null,
+    keep_carried: $("keep_carried").checked,
+    recover: $("recover").checked,
+    clear_at_start: $("clear_at_start").checked,
+    spawn_tools: $("spawn_tools").checked,
+    auto_trees: $("auto_trees").checked,
+    task: document.querySelector("input[name=task]:checked")?.value || "woodcutting",
+    fm_logs: [...document.querySelectorAll("input[name=fmlog]:checked")].map(el => el.value),
+    burn_spot: $("burn_spot").value || null,
+    fish_method: $("fish_method").value || "net",
+    auto_fish: $("auto_fish").checked,
+    fish_spot: $("fish_spot").value || null,
+    cook: $("cook").checked,
+    cooked_action: document.querySelector("input[name=cooked]:checked")?.value || "drop",
+    fire_trees: [...document.querySelectorAll("input[name=firetree]:checked")].map(el => el.value),
+    ores: [...document.querySelectorAll("input[name=ore]:checked")].map(el => el.value),
+    auto_ores: $("auto_ores").checked,
+    mine_spot: $("mine_spot").value || null,
+    mine_full: document.querySelector("input[name=minefull]:checked")?.value || "drop",
+    targets: [...document.querySelectorAll("input[name=target]:checked")].map(el => el.value),
+    foods: [...document.querySelectorAll("input[name=food]:checked")].map(el => el.value),
+    eat_below: Number($("eat_below").value),
+    train: $("train").value || "auto",
+    fight_spot: $("fight_spot").value || null,
+    loot: [...document.querySelectorAll("input[name=loot]:checked")].map(el => el.value),
+    bury_bones: $("bury_bones").checked,
+    autopilot_target: Number($("aptarget").value) || 99,
+    autopilot_skip: [...document.querySelectorAll("#apskip [data-skip]:checked")].map(b => b.dataset.skip),
+  };
+}
+
+let checkTimer = null;
+async function runCheck() {
+  try {
+    const r = await fetch("/api/check", { method: "POST", headers: { "Content-Type": "application/json" },
+                                          body: JSON.stringify(settings()) });
+    const c = await r.json();
+    const list = (title, items, cls) => items.length
+      ? `<div class="${cls}"><b>${title}</b><ul>${items.map(t => `<li>${esc(t)}</li>`).join("")}</ul></div>` : "";
+    $("need").innerHTML =
+      list("Needed before you can start", c.errors || [], "need") +
+      list("Will sort itself out", c.fixes || [], "need ok") +
+      list("Good to know", c.warnings || [], "need info");
+    if (!running) $("start").disabled = (c.errors || []).length > 0;
+  } catch (e) {}
+}
+const save = () => {
+  clearTimeout(checkTimer);
+  checkTimer = setTimeout(runCheck, 300);
+  return post("/api/settings", settings());
+};
+
+async function loadOptions() {
+  const o = await (await fetch("/api/options")).json();
+  saved = o.settings;
+  const s = saved;
+  $("trees").innerHTML = o.trees.map(t => `
+    <label class="opt"><input type="checkbox" name="tree" value="${t.id}" ${t.ready ? "" : "disabled"}
+      ${(s.trees || []).includes(t.id) ? "checked" : ""}><span>${t.name}<small>${t.ready ? "lvl " + t.level : "not learned"}</small></span></label>`).join("");
+  $("actions").innerHTML = o.full_actions.map(a => `
+    <label class="opt"><input type="radio" name="full" value="${a.id}" ${a.ready ? "" : "disabled"}
+      ${a.id === s.when_full ? "checked" : ""}><span>${a.name}${a.ready ? "" : "<small>coming soon</small>"}</span></label>`).join("");
+  $("drop_at").value = s.drop_at; $("dropv").textContent = s.drop_at;
+  $("max_minutes").value = s.max_minutes ?? ""; $("max_logs").value = s.max_logs ?? "";
+  $("keep_carried").checked = s.keep_carried ?? true;
+  $("recover").checked = s.recover ?? true;
+  $("clear_at_start").checked = s.clear_at_start ?? true;
+  $("spawn_tools").checked = s.spawn_tools ?? true;
+  $("aptarget").value = s.autopilot_target ?? 99;
+  renderApSkip(s.autopilot_skip || []);
+  loadItems();
+  $("auto_trees").checked = !!s.auto_trees;
+  $("tree-pick").style.opacity = s.auto_trees ? .45 : 1;
+  $("fm_logs").innerHTML = (o.log_types || []).map(t => `
+    <label class="opt"><input type="checkbox" name="fmlog" value="${t.id}" ${t.ready ? "" : "disabled"}
+      ${(s.fm_logs || []).includes(t.id) ? "checked" : ""}><span>${t.name}<small>${t.ready ? "FM " + t.level : "not learned"}</small></span></label>`).join("");
+  const fo = o.fishing || { methods: [], items: [] };
+  $("fish_method").innerHTML = fo.methods.map(m => `<option value="${m.id}">${m.id[0].toUpperCase() + m.id.slice(1)}
+    (lvl ${m.level}, ${esc(m.tools)})${m.ready ? "" : " – not learned"}</option>`).join("");
+  $("fish_method").value = s.fish_method || "net";
+  $("auto_fish").checked = !!s.auto_fish;
+  $("cook").checked = s.cook ?? true;
+  $("cook-opts").style.opacity = $("cook").checked ? 1 : .45;
+  const ck = document.querySelector(`input[name=cooked][value="${s.cooked_action || "drop"}"]`);
+  if (ck) ck.checked = true;
+  $("fire_trees").innerHTML = o.trees.filter(t => ["tree", "oak", "willow", "maple", "yew"].includes(t.id)).map(t => `
+    <label class="opt"><input type="checkbox" name="firetree" value="${t.id}" ${t.ready ? "" : "disabled"}
+      ${(s.fire_trees || []).includes(t.id) ? "checked" : ""}><span>${t.name}<small>${t.ready ? "WC/FM " + t.level : "not learned"}</small></span></label>`).join("");
+  const keepName = $("fl_name").value;
+  $("fl_name").innerHTML = fo.items.map(i => `<option value="${i.id}">${esc(i.name)} (${i.kind})${i.ready ? " ✓" : ""}</option>`).join("");
+  if (keepName) $("fl_name").value = keepName;
+  const need = [fo.methods.some(m => m.ready) ? null : "fishing spot", fo.items.some(i => i.kind === "raw" && i.ready) ? null : "a raw fish",
+                fo.fire ? null : "fire"].filter(Boolean);
+  $("fish-ready").textContent = need.length ? "still to learn: " + need.join(", ") : "all learned ✓";
+  const mo = o.mining || { ores: [] };
+  $("ores").innerHTML = mo.ores.map(t => `
+    <label class="opt"><input type="checkbox" name="ore" value="${t.id}" ${(s.ores || []).includes(t.id) ? "checked" : ""}>
+      <span>${t.id[0].toUpperCase() + t.id.slice(1)}<small>lvl ${t.level}</small></span></label>`).join("");
+  $("auto_ores").checked = !!s.auto_ores;
+  $("ore-pick").style.opacity = s.auto_ores ? .45 : 1;
+  const mf = document.querySelector(`input[name=minefull][value="${s.mine_full || "drop"}"]`);
+  if (mf) mf.checked = true;
+  $("mine-ready").textContent = mo.ready ? "rock learned ✓" : "still to learn: rock";
+  const co = o.combat || { npcs: [], foods: [] };
+  $("targets").innerHTML = co.npcs.map(t => `
+    <label class="opt"><input type="checkbox" name="target" value="${t.id}" ${t.ready ? "" : "disabled"}
+      ${(s.targets || []).includes(t.id) ? "checked" : ""}><span>${esc(t.name)}<small>${t.ready ? "learned" : "not learned"}</small></span></label>`).join("");
+  $("foods").innerHTML = co.foods.map(t => `
+    <label class="opt"><input type="checkbox" name="food" value="${t.id}" ${t.ready ? "" : "disabled"}
+      ${(s.foods || []).includes(t.id) ? "checked" : ""}><span>${esc(t.name)}<small>${t.ready ? "learned" : "not learned"}</small></span></label>`).join("");
+  $("loot").innerHTML = (co.loot || []).map(t => `
+    <label class="opt"><input type="checkbox" name="loot" value="${t.id}" ${t.ready ? "" : "disabled"}
+      ${(s.loot || []).includes(t.id) ? "checked" : ""}><span>${esc(t.name)}<small>${t.ready ? "learned" : "not learned"}</small></span></label>`).join("");
+  $("bury_bones").checked = !!s.bury_bones;
+  $("eat_below").value = s.eat_below ?? 50; $("eatv").textContent = $("eat_below").value;
+  $("train").value = s.train || "auto";
+  const learnedNpcs = co.npcs.filter(n => n.ready).map(n => n.name.toLowerCase());
+  $("combat-ready").textContent = learnedNpcs.length ? "learned: " + learnedNpcs.join(", ") : "no monster learned yet";
+  const tk = document.querySelector(`input[name=task][value="${s.task || "woodcutting"}"]`);
+  if (tk) tk.checked = true;
+  showTask();
+  const sm = document.querySelector(`input[name=start][value="${s.start_mode || "here"}"]`);
+  if (sm) sm.checked = true;
+  savedSpots = s.spots ?? null;
+  await loadMaps(s.map);
+}
+
+async function loadMaps(selected) {
+  mapsData = await (await fetch("/api/maps")).json();
+  const cur = selected !== undefined ? selected : $("map").value;
+  $("map").innerHTML = `<option value="">None (no walking)</option>` +
+    Object.keys(mapsData).map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join("");
+  $("map").value = cur || "";
+  if (!$("recname").value) $("recname").value = cur || "main";
+  renderSpots();
+}
+
+function spotOptions(sel, blank, filter) {
+  const m = $("map").value, spots = m ? mapsData[m] || {} : {};
+  const keep = sel.value;
+  sel.innerHTML = (blank ? `<option value="">${blank}</option>` : "") +
+    Object.entries(spots).filter(([n, s]) => !filter || filter(s))
+      .map(([n, s]) => `<option value="${esc(n)}">${esc(n)}${s.kind === "bank" ? " (bank)" : ""}</option>`).join("");
+  return keep;
+}
+
+function renderSpots() {
+  const m = $("map").value, box = $("spots");
+  const spots = m ? mapsData[m] || {} : {};
+  // dropdowns
+  let k = spotOptions($("start_spot"), "", null); $("start_spot").value = saved.start_spot && spots[saved.start_spot] ? saved.start_spot : k;
+  k = spotOptions($("chop_spot"), "Right here", s => s.kind !== "bank"); $("chop_spot").value = saved.chop_spot && spots[saved.chop_spot] ? saved.chop_spot : k;
+  k = spotOptions($("bank_spot"), "Nearest bank spot", s => s.kind === "bank"); $("bank_spot").value = saved.bank_spot && spots[saved.bank_spot] ? saved.bank_spot : k;
+  k = spotOptions($("fish_spot"), "Right here", s => s.kind !== "bank"); $("fish_spot").value = saved.fish_spot && spots[saved.fish_spot] ? saved.fish_spot : k;
+  k = spotOptions($("mine_spot"), "Right here", s => s.kind !== "bank"); $("mine_spot").value = saved.mine_spot && spots[saved.mine_spot] ? saved.mine_spot : k;
+  k = spotOptions($("fight_spot"), "Right here", s => s.kind !== "bank"); $("fight_spot").value = saved.fight_spot && spots[saved.fight_spot] ? saved.fight_spot : k;
+  k = spotOptions($("burn_spot"), "Wherever I am after banking", s => s.kind !== "bank"); $("burn_spot").value = saved.burn_spot && spots[saved.burn_spot] ? saved.burn_spot : k;
+  spotOptions($("goto_spot"), "", null);
+  // spot list
+  const names = Object.keys(spots).filter(n => spots[n].kind !== "bank");
+  if (!m) { box.innerHTML = `<div class="empty">Pick a map to use spots.</div>`; return; }
+  const banks = Object.keys(spots).filter(n => spots[n].kind === "bank");
+  if (!names.length && !banks.length) { box.innerHTML = `<div class="empty">No spots yet — save one in Map tools.</div>`; return; }
+  box.innerHTML = names.map(n => {
+    const s = spots[n], on = savedSpots === null || savedSpots.includes(n);
+    return `<div class="spot"><input type="checkbox" name="spot" value="${esc(n)}" ${on ? "checked" : ""} aria-label="use ${esc(n)}">
+      <div class="nm">${esc(n)}${{ fish: "fishing", rocks: "rocks", combat: "combat" }[s.kind] ? `<span class="tag">${{ fish: "fishing", rocks: "rocks", combat: "combat" }[s.kind]}</span>` : ""}<small>${esc((s.trees || []).join(", "))} · (${s.x}, ${s.y})</small></div>
+      <button data-del="${esc(n)}" title="Delete spot">✕</button></div>`;
+  }).join("") + banks.map(n => `<div class="spot"><div class="nm">${esc(n)}<span class="tag">bank</span>
+      <small>(${mapsData[m][n].x}, ${mapsData[m][n].y})</small></div><button data-del="${esc(n)}" title="Delete spot">✕</button></div>`).join("");
+  box.querySelectorAll("input[name=spot]").forEach(el => el.addEventListener("change", () => { savedSpots = settings().spots; save(); }));
+  box.querySelectorAll("[data-del]").forEach(b => b.onclick = async () => {
+    if (!confirm(`Delete spot '${b.dataset.del}'?`)) return;
+    await post("/api/spots/delete", { map: m, name: b.dataset.del });
+    loadMaps();
+  });
+}
+
+async function loadItems() {
+  const list = await (await fetch("/api/items")).json();
+  const groups = {};
+  list.forEach(it => (groups[it.group] = groups[it.group] || []).push(it));
+  const stackable = /x\d+ recommended/;
+  $("itemlist").innerHTML = Object.entries(groups).map(([g, its]) => `
+    <details class="items-group"><summary><b>${esc(g)}</b> <small class="hint">${its.length}</small></summary>${its.map(it => `
+      <div class="item"><div>${esc(it.name)}<small>${esc(it.note)}</small></div>
+        <code title="Click to copy" data-copy="${esc(it.command)}">${esc(it.command)}</code>
+        ${stackable.test(it.note) ? `<input type="number" min="1" value="${it.note.match(/x(\d+)/)[1]}" data-amt="${it.key}" aria-label="amount">` : "<span></span>"}
+        <button data-spawn="${it.key}">Spawn</button></div>`).join("")}</details>`).join("");
+  $("itemlist").querySelectorAll("[data-copy]").forEach(c => c.onclick = async () => {
+    try { await navigator.clipboard.writeText(c.dataset.copy); $("itemmsg").textContent = `Copied ${c.dataset.copy}`; } catch (e) {}
+  });
+  $("itemlist").querySelectorAll("[data-spawn]").forEach(b => b.onclick = () => {
+    const amt = $("itemlist").querySelector(`[data-amt="${b.dataset.spawn}"]`);
+    post("/api/spawn", { key: b.dataset.spawn, amount: amt ? Number(amt.value) || 1 : 1 }, $("itemmsg"));
+  });
+}
+
+// ---- plan ----
+const TASKS = [["woodcutting", "🪓 Woodcutting"], ["fishing", "🎣 Fishing"], ["mining", "⛏️ Mining"],
+               ["combat", "⚔️ Combat"], ["firemaking", "🔥 Firemaking"], ["cooking", "🍳 Cooking"],
+               ["prayer", "🦴 Prayer"], ["fletching", "🏹 Fletching"], ["crafting", "💎 Crafting"],
+               ["thieving", "🧤 Thieving"], ["smithing", "🔨 Smithing"], ["ranged", "🎯 Ranged"],
+               ["magic", "🪄 Magic"]];
+let plan = { steps: [], loop: true, teleport: true }, places = {};
+
+async function loadPlan() {
+  const j = await (await fetch("/api/plan")).json();
+  plan = j.plan; places = j.places || {};
+  $("planloop").checked = plan.loop; $("plantele").checked = plan.teleport;
+  $("planlowest").checked = plan.order === "lowest";
+  $("planhours").value = plan.max_hours ?? "";
+
+  $("planresume").checked = plan.resume ?? true;
+  $("planupdate").checked = !!plan.auto_update;
+  renderPlan(); renderPlaces();
+}
+
+function planFromUI() {
+  const rows = [...document.querySelectorAll("#plansteps .planstep")];
+  return {
+    loop: $("planloop").checked, teleport: $("plantele").checked,
+    order: $("planlowest").checked ? "lowest" : "in order",
+    max_hours: $("planhours").value ? Number($("planhours").value) : null,
+    autopilot: false,
+    resume: $("planresume").checked,
+    auto_update: $("planupdate").checked,
+    steps: rows.map((r, i) => ({
+      options: (plan.steps[i] || {}).options || {},
+      task: r.querySelector("[data-k=task]").value,
+      minutes: r.querySelector("[data-k=minutes]").value ? Number(r.querySelector("[data-k=minutes]").value) : null,
+      level: r.querySelector("[data-k=level]").value ? Number(r.querySelector("[data-k=level]").value) : null,
+      place: r.querySelector("[data-k=place]").value || null,
+    })),
+  };
+}
+
+function renderPlan() {
+  const opts = (sel, list) => list.map(([v, t]) => `<option value="${esc(v)}" ${v === sel ? "selected" : ""}>${esc(t)}</option>`).join("");
+  const placeOpts = (sel) => `<option value="">(stay where I am)</option>` +
+    `<option value="auto" ${sel === "auto" ? "selected" : ""}>auto - best spot for my level</option>` +
+    Object.keys(places).map(n => `<option value="${esc(n)}" ${n === sel ? "selected" : ""}>${esc(n)}</option>`).join("");
+  $("plansteps").innerHTML = plan.steps.length ? plan.steps.map((st, i) => `
+    <div class="planstep spot" style="flex-wrap:wrap;gap:6px">
+      <b style="width:18px">${i + 1}</b>
+      <select data-k="task" style="width:auto">${opts(st.task, TASKS)}</select>
+      <span class="hint" style="margin:0">until</span>
+      <input data-k="minutes" type="number" min="1" placeholder="min" value="${st.minutes ?? ""}" style="width:70px" aria-label="minutes">
+      <span class="hint" style="margin:0">min / level</span>
+      <input data-k="level" type="number" min="2" max="99" placeholder="lvl" value="${st.level ?? ""}" style="width:60px" aria-label="level">
+      <span class="hint" style="margin:0">at</span>
+      <select data-k="place" class="grow" style="width:auto">${placeOpts(st.place)}</select>
+      <button data-del="${i}" title="Remove step" type="button">✕</button>
+    </div>`).join("") : `<div class="empty">No steps yet - add one.</div>`;
+  $("plansteps").querySelectorAll("[data-del]").forEach(b => b.onclick = () => {
+    plan = planFromUI(); plan.steps.splice(Number(b.dataset.del), 1); renderPlan(); savePlanSoon();
+  });
+  $("plansteps").querySelectorAll("select, input").forEach(el => el.addEventListener("change", savePlanSoon));
+}
+
+async function loadHistory() {
+  let h;
+  try { h = await (await fetch("/api/history")).json(); } catch { return; }
+  if (!h.runs) { $("history").textContent = "No runs yet."; return; }
+  const fmt = n => n >= 10000 ? `${Math.round(n / 1000)}k` : n.toLocaleString();
+  const mins = m => m >= 60 ? `${Math.floor(m / 60)} h ${Math.round(m % 60)} min` : `${Math.round(m)} min`;
+  const xp = Object.entries(h.xp).map(([k, n]) => `${k} +${fmt(n)}`).join(", ") || "no XP";
+  const lv = Object.entries(h.levels).map(([k, [a, b]]) => `${k} ${a}→${b}`).join(", ");
+  const when = t => new Date(t * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  $("history").innerHTML = `<div><b>${mins(h.minutes)}</b> over ${h.runs} run(s): ${esc(xp)}` +
+    (lv ? `<br>Levels: ${esc(lv)}` : "") + (h.problems ? `<br>${h.problems} run(s) ended early (crash, stuck, died...)` : "") +
+    `</div><div style="margin-top:6px">` + h.recent.map(r =>
+      `<div>${when(r.start)} ${esc(r.task)}${r.place ? " @ " + esc(r.place) : ""} · ${mins(r.minutes)} · ` +
+      `${esc(Object.entries(r.xp).map(([k, n]) => `+${fmt(n)} ${k}`).join(", ") || "no XP")} · ${esc(r.reason || "")}</div>`).join("") +
+    `</div>`;
+}
+
+function renderPlaces() {
+  const names = Object.keys(places);
+  $("placelist").innerHTML = names.length ? names.map(n => `
+    <div class="spot"><div class="nm">${esc(n)}<small>(${places[n].tile.join(", ")}${places[n].note ? " · " + esc(places[n].note) : ""})</small></div>
+      <button data-go="${esc(n)}" type="button">Go</button>
+      ${places[n].builtin ? "" : `<button data-pdel="${esc(n)}" title="Delete place" type="button">✕</button>`}</div>`).join("")
+    : `<div class="empty">No places yet - stand somewhere and save it.</div>`;
+  $("placelist").querySelectorAll("[data-go]").forEach(b => b.onclick = () => post("/api/places/go", { name: b.dataset.go }, $("planmsg")));
+  $("placelist").querySelectorAll("[data-pdel]").forEach(b => b.onclick = async () => {
+    if (!confirm(`Delete place '${b.dataset.pdel}'?`)) return;
+    await post("/api/places/delete", { name: b.dataset.pdel }); loadPlan();
+  });
+}
+
+let planTimer = null;
+function savePlanSoon() {
+  clearTimeout(planTimer);
+  planTimer = setTimeout(() => { plan = planFromUI(); post("/api/plan", plan); }, 300);
+}
+
+function showTab(name) {
+  document.querySelectorAll(".tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === name));
+  document.querySelectorAll(".tabpanel").forEach(p => p.hidden = p.dataset.tab !== name);
+  try { localStorage.setItem("lj-tab", name); } catch (e) {}
+}
+document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => showTab(b.dataset.tab));
+try {
+  let t = localStorage.getItem("lj-tab") || "task";
+  t = { route: "tools", manual: "tools", map: "tools", items: "tools" }[t] || t;
+  showTab(document.querySelector(`.tabs button[data-tab="${t}"]`) ? t : "task");
+} catch (e) { showTab("task"); }
+
+function showTask() {
+  const task = document.querySelector("input[name=task]:checked")?.value || "woodcutting";
+  $("ap-card").hidden = task !== "autopilot";
+  $("fm-card").hidden = task !== "firemaking";
+  $("fish-card").hidden = task !== "fishing";
+  $("wc-card").hidden = task !== "woodcutting";
+  $("mine-card").hidden = task !== "mining";
+  $("combat-card").hidden = !["combat", "ranged"].includes(task);   // ranged uses the same targets/food
+  $("max_logs").placeholder = { fishing: "fish", firemaking: "fires", mining: "ore", combat: "kills", cooking: "fish",
+    prayer: "bones", fletching: "logs", crafting: "gems", thieving: "steals", smithing: "bars", ranged: "kills", magic: "casts" }[task] || "logs";
+}
+document.querySelectorAll("input[name=task]").forEach(el => el.addEventListener("change", () => { showTask(); save(); }));
+
+// ---- events ----
+$("drop_at").addEventListener("input", e => $("dropv").textContent = e.target.value);
+$("eat_below").addEventListener("input", e => $("eatv").textContent = e.target.value);
+document.querySelector("aside").addEventListener("change", (e) => {
+  const id = e.target.id, nm = e.target.name;
+  if (["spotname", "spotkind", "recname", "learnname", "goto_spot", "fl_slot", "fl_name", "cb_name", "lt_name", "placename", "planloop", "plantele", "planlowest", "planresume", "planupdate", "planhours"].includes(id)
+      || e.target.closest("#plansteps") || nm === "spot") return;
+  if (id === "cook") $("cook-opts").style.opacity = e.target.checked ? 1 : .45;
+  if (id === "map") { savedSpots = null; saved.start_spot = saved.chop_spot = saved.bank_spot = saved.fish_spot = saved.mine_spot = saved.fight_spot = null; renderSpots(); }
+  if (id === "start_spot") document.querySelector("input[name=start][value=spot]").checked = true;
+  if (id === "auto_trees") $("tree-pick").style.opacity = e.target.checked ? .45 : 1;
+  if (id === "auto_ores") $("ore-pick").style.opacity = e.target.checked ? .45 : 1;
+  save();
+});
+
+$("start").onclick = () => post("/api/start", settings(), $("msg"));
+$("pause").onclick = () => post("/api/pause");
+$("stop").onclick = () => post("/api/stop");
+
+document.querySelectorAll("[data-action]").forEach(b =>
+  b.onclick = () => post(`/api/action/${b.dataset.action}`, null, $("manmsg")));
+$("goto").onclick = () => {
+  if (!$("goto_spot").value) { $("manmsg").textContent = "Pick a map and a spot"; return; }
+  post("/api/spots/goto", { map: $("map").value, name: $("goto_spot").value }, $("manmsg"));
+};
+
+const recStart = async (extend) => {
+  const name = $("recname").value.trim() || "main";
+  const j = await post("/api/record/start", { map: name, extend }, $("toolmsg"));
+  if (j.ok) { $("map").value = name; }
+};
+$("recnew").onclick = () => {
+  const name = $("recname").value.trim() || "main";
+  if (mapsData[name] && !confirm(`Replace the existing map '${name}' (and its spots)?`)) return;
+  recStart(false);
+};
+$("recext").onclick = () => recStart(true);
+$("recstop").onclick = async () => { await post("/api/record/stop"); setTimeout(() => loadMaps($("recname").value.trim()), 500); };
+
+$("savespot").onclick = async () => {
+  if (!$("map").value) { $("toolmsg").textContent = "Pick a map in Route first"; return; }
+  const j = await post("/api/spots/save", { map: $("map").value, name: $("spotname").value,
+                                             trees: { rocks: settings().ores, fish: fishSpotMethods() }[$("spotkind").value] ?? settings().trees,
+                                             kind: $("spotkind").value }, $("toolmsg"));
+  if (j.ok) { $("spotname").value = ""; loadMaps(); }
+};
+$("learn").onclick = async () => {
+  const n = $("learnname").value.trim();
+  if (!n) { $("toolmsg").textContent = "Type the tree's name first"; return; }
+  const j = await post("/api/calibrate", { name: n }, $("toolmsg"));
+  if (j.ok) setTimeout(loadOptions, 6000);
+};
+
+const fishLearn = async (body) => {
+  const j = await post("/api/fishing/learn", body, $("fishmsg"));
+  if (j.ok) { $("fishmsg").textContent = "Working… see Activity"; setTimeout(() => loadOptions().then(runCheck), 8000); }
+};
+$("fl-spot").onclick = () => fishLearn({ what: "spot" });
+$("fl-fire").onclick = () => fishLearn({ what: "fire" });
+$("fl-cook").onclick = () => fishLearn({ what: "cook" });
+$("fl-item").onclick = () => fishLearn({ what: "item", slot: Number($("fl_slot").value), name: $("fl_name").value });
+
+// what a Fishing spot saved here offers: the method picked plus its spot partner (net+bait, lure+bait, cage+harpoon)
+const fishSpotMethods = () => {
+  const m = $("fish_method").value || "net";
+  return { net: ["net", "bait"], bait: ["net", "bait"], lure: ["lure", "bait"], cage: ["cage", "harpoon"], harpoon: ["cage", "harpoon"] }[m] || [m];
+};
+
+const learn = async (url, body, msgEl) => {
+  const j = await post(url, body, msgEl);
+  if (j.ok) { msgEl.textContent = "Working… see Activity"; setTimeout(() => loadOptions().then(runCheck), 8000); }
+};
+$("ml-rock").onclick = () => learn("/api/mining/learn", { what: "rock" }, $("minemsg"));
+$("ml-test").onclick = () => learn("/api/mining/learn", { what: "test" }, $("minemsg"));
+$("cb-npc").onclick = () => {
+  if (!$("cb_name").value.trim()) { $("combatmsg").textContent = "Type the monster's name first"; return; }
+  learn("/api/combat/learn", { what: "npc", name: $("cb_name").value }, $("combatmsg"));
+};
+$("cb-test").onclick = () => learn("/api/combat/learn", { what: "test" }, $("combatmsg"));
+$("cb-loot").onclick = () => {
+  if (!$("lt_name").value.trim()) { $("combatmsg").textContent = "Type the item's name first"; return; }
+  learn("/api/combat/learn", { what: "loot", name: $("lt_name").value }, $("combatmsg"));
+};
+$("cb-bury").onclick = () => learn("/api/combat/learn", { what: "bury" }, $("combatmsg"));
+$("fl-test").onclick = () => fishLearn({ what: "test" });
+
+$("planadd").onclick = () => {
+  plan = planFromUI();
+  plan.steps.push({ task: settings().task, minutes: 30, level: null, place: null });
+  renderPlan(); savePlanSoon();
+};
+let placeCheckTimer = null;
+async function pollPlaceCheck() {
+  const c = await (await fetch("/api/places/check")).json();
+  const icon = { ok: "✓", moved: "↪", missing: "✗", unreachable: "✗" };
+  $("placecheckres").innerHTML = c.results.map(r => `<div>${icon[r.status] || "?"} ${esc(r.place)}: ` +
+    (r.status === "moved" ? `moved to (${r.tile.join(", ")}) · ` : r.status === "unreachable" ? "couldn't get there · " : "") +
+    esc(Object.entries(r.found).map(([k, n]) => `${k} ×${n}`).join(", ")) + `</div>`).join("");
+  $("placecheckmsg").textContent = c.running ? `checking... (${c.results.length} done)` : (c.results.length ? "done" : "");
+  if (!c.running) { clearInterval(placeCheckTimer); placeCheckTimer = null; loadPlan(); }
+}
+$("placecheck").onclick = async () => {
+  const j = await post("/api/places/check", null, $("planmsg"));
+  if (j.ok && !placeCheckTimer) { $("placecheckmsg").textContent = "checking..."; placeCheckTimer = setInterval(pollPlaceCheck, 2000); }
+};
+// ---- autopilot (a task under Controls; its settings are saved with the others) ----
+function renderApSkip(skip) {
+  const off = new Set(skip);
+  $("apskip").innerHTML = TASKS.map(([v, t]) =>
+    `<label class="opt"><input type="checkbox" data-skip="${esc(v)}" ${off.has(v) ? "checked" : ""}><span>${esc(t)}</span></label>`).join("");
+}
+$("planstarter").onclick = () => {
+  if (plan.steps.length && !confirm("Replace the plan's steps with the starter plan?")) return;
+  plan = planFromUI();
+  plan.steps = ["woodcutting", "fishing", "mining", "combat", "ranged", "magic", "thieving", "smithing"].map(task => ({ task, minutes: 30, level: null, place: "auto", options: {} }))
+    .concat(["firemaking", "cooking", "prayer", "fletching", "crafting"].map(task => ({ task, minutes: 20, level: null, place: null, options: {} })));   // spawn their supplies
+  plan.loop = true; plan.order = "lowest";
+  $("planloop").checked = true; $("planlowest").checked = true;
+  renderPlan(); savePlanSoon();
+};
+$("planloop").onchange = savePlanSoon;
+$("plantele").onchange = savePlanSoon;
+$("planlowest").onchange = savePlanSoon;
+$("planhours").onchange = savePlanSoon;
+$("planresume").onchange = savePlanSoon;
+$("planupdate").onchange = () => {
+  if ($("planupdate").checked) $("planresume").checked = true;   // updating restarts the panel
+  savePlanSoon();
+};
+$("planstart").onclick = () => { plan = planFromUI(); post("/api/plan/start", plan, $("planmsg")); };
+$("placesave").onclick = async () => {
+  const name = $("placename").value.trim();
+  if (!name) { $("planmsg").textContent = "Name the place first"; return; }
+  const j = await post("/api/places/save", { name }, $("planmsg"));
+  if (j.ok) { $("placename").value = ""; $("planmsg").textContent = `Saved '${name}' at (${j.place.tile.join(", ")})`; loadPlan(); }
+};
+
+// ---- updating ----
+let updating = false;
+$("update").onclick = async () => {
+  if (updating) return;
+  updating = true;
+  $("update").textContent = "updating...";
+  const j = await post("/api/update", null, null);
+  if (!j.ok) { updating = false; $("update").textContent = "update failed"; alert(j.error || "Update failed"); return; }
+  $("update").textContent = j.message;
+  if (!j.restarting) { updating = false; return; }
+  // the panel restarts on the new code: wait until it answers again, then reload the page
+  const back = async () => {
+    try { const r = await fetch("/api/running", { cache: "no-store" }); if (r.ok) { location.reload(); return; } } catch (e) {}
+    setTimeout(back, 1500);
+  };
+  setTimeout(back, 4000);
+};
+
+// ---- live status ----
+function connect() {
+  const ws = new WebSocket(`ws://${location.host}/ws`);
+  ws.onmessage = (e) => {
+    const st = JSON.parse(e.data);
+    running = st.running;
+    const busy = running || !!st.manual || !!st.recording;
+    $("start").disabled = busy || !!document.querySelector("#need .need:not(.ok):not(.info)");
+    const pl = st.plan;
+    $("planstatus").hidden = !pl;
+    document.body.classList.toggle("gd", !!st.game_data);     // hides the screen-reading-only parts
+    if (pl && pl.autopilot) $("planstatus").textContent = `🤖 Autopilot #${pl.step}: ${pl.task} - ${pl.why || ""}` +
+      (pl.total ? ` · total level ${pl.total}/${pl.total_target}` : "") +
+      (pl.doing ? ` - ${pl.doing}` : "") + (pl.attempt > 1 ? ` - attempt ${pl.attempt}` : "");
+    else if (pl) $("planstatus").textContent = `Plan step ${pl.step}/${pl.of}: ${pl.task}` + (pl.place ? ` at ${pl.place}` : "") +
+      (pl.until ? ` (${pl.until})` : "") + (pl.doing ? ` - ${pl.doing}` : "") + (pl.attempt > 1 ? ` - attempt ${pl.attempt}` : "");
+    $("planstart").disabled = busy;
+    $("stopped").hidden = !st.stop_reason;
+    $("stopped").textContent = st.stop_reason ? `Last run stopped: ${st.stop_reason}` : "";
+    const xp = st.xp || {}, rows = Object.entries(xp);
+    $("xp").hidden = !rows.length;
+    const n = (v) => v == null ? "–" : Number(v).toLocaleString();
+    const eta = (s) => s == null ? "–" : s >= 3600 ? `${Math.floor(s / 3600)}h ${Math.round(s % 3600 / 60)}m` : `${Math.max(1, Math.round(s / 60))} min`;
+    $("xp").querySelector("tbody").innerHTML = rows.map(([k, v]) => `<tr>
+      <td>${esc(k[0].toUpperCase() + k.slice(1))}</td>
+      <td>${v.level}${v.levels_gained ? ` <small>+${v.levels_gained}</small>` : ""}</td>
+      <td>${n(v.gained)}</td><td>${v.per_hour ? n(v.per_hour) : "–"}</td>
+      <td>${n(v.remainder)}</td><td>${eta(v.eta_s)}</td></tr>`).join("");
+    $("pause").disabled = !running;
+    $("stop").disabled = !running;
+    document.querySelectorAll("[data-action], #goto").forEach(b => b.disabled = busy);
+    $("recnew").disabled = $("recext").disabled = running || !!st.recording;
+    $("recstop").disabled = !st.recording;
+    $("recpill").hidden = !st.recording;
+    $("recinfo").textContent = st.recording ? (st.recording.lost
+      ? `⚠ Lost track — walk back toward (${st.recording.pos}), the last recorded spot`
+      : `Recording '${st.recording.map}' — at (${st.recording.pos}), ${st.recording.points} path points`) : "";
+    $("recinfo").style.color = st.recording && st.recording.lost ? "var(--red)" : "";
+    const v = st.version || {};
+    $("version").textContent = v.version != null ? `v${v.version}` : "v?";
+    $("version").title = v.commit ? `Bot version v${v.version} (${v.commit})` + (v.latest != null ? ` - newest on GitHub: v${v.latest}` : "") : "";
+    $("update").hidden = !v.update;
+    if (v.update && !updating) $("update").textContent = `⬆ Update to v${v.latest}`;
+    $("pause").textContent = st.paused ? "Resume" : "Pause";
+    $("s-logs").textContent = st.logs;
+    $("s-banked").textContent = st.banked ?? 0;
+    $("s-burned").textContent = st.burned ?? 0;
+    $("s-fletched").textContent = st.fletched ?? 0;
+    $("s-cooked").textContent = st.cooked ?? 0;
+    $("s-burnt").textContent = st.burnt ?? 0;
+    const task = st.task || settings().task, fishing = task === "fishing";
+    const UNITS = { fishing: ["fish", "fish caught"], mining: ["ore", "ore mined"], combat: ["kills", "kills"],
+      ranged: ["kills", "kills"], magic: ["casts", "casts"], thieving: ["steals", "pickpockets"],
+      firemaking: ["fires", "fires lit"], cooking: ["fish", "fish cooked"], prayer: ["bones", "bones buried"],
+      fletching: ["logs", "logs fletched"], crafting: ["gems", "gems cut"], smithing: ["bars", "bars smithed"] };
+    const [unit, unitLabel] = UNITS[task] || ["logs", "logs cut"];
+    $("l-logs").textContent = unitLabel;
+    $("s-banked").parentElement.hidden = !st.banked;          // only once they happen
+    $("s-burned").parentElement.hidden = !st.burned || task === "firemaking";
+    $("l-rate").textContent = `${unit} / hour`;
+    $("t-cooked").hidden = $("t-burnt").hidden = !fishing;
+    $("t-fletched").hidden = task !== "woodcutting" && task !== "bot";
+    $("t-eaten").hidden = task !== "combat";
+    $("s-eaten").textContent = st.eaten ?? 0;
+    const lv = st.levels || {}, names = { woodcutting: "WC", firemaking: "FM", fletching: "FL", fishing: "FI", cooking: "CK",
+                                 mining: "MI", attack: "AT", strength: "ST", defence: "DE", hitpoints: "HP" };
+    $("levels").hidden = !Object.keys(lv).length;
+    $("levels").textContent = Object.entries(lv).map(([k, v]) => `${names[k] || k} ${v}`).join(" · ");
+    $("s-rate").textContent = st.per_hour || "–";
+    $("s-time").textContent = fmtTime(st.elapsed);
+    $("s-state").textContent = st.manual ? st.manual : st.state;
+    const pill = $("pill");
+    pill.className = "pill " + (st.error ? "err" : st.paused ? "pause" : running ? "run" : "");
+    pill.textContent = st.error ? "error" : st.paused ? "paused" : running ? "running" : st.manual ? "manual" : "idle";
+    if (st.error) $("msg").textContent = st.error;
+    if (st.log.length) {
+      const box = $("log"), stick = box.scrollTop + box.clientHeight >= box.scrollHeight - 20;
+      box.textContent += st.log.join("\n") + "\n";
+      if (stick) box.scrollTop = box.scrollHeight;
+    }
+  };
+  ws.onclose = () => setTimeout(connect, 1500);
+}
+
+setInterval(async () => {
+  const m = $("map").value;
+  if (!m || !mapsData[m]) { $("where").textContent = ""; return; }
+  try {
+    const j = await (await fetch(`/api/where?map=${encodeURIComponent(m)}`)).json();
+    $("where").textContent = j.ok ? `📍 ${m} (${j.x}, ${j.y})` : `📍 not on '${m}'`;
+  } catch (e) {}
+}, 4000);
+
+// copy the log (all lines, oldest first) - for pasting into a message or a bug report
+$("copylog").onclick = async () => {
+  const text = $("log").innerText;
+  try { await navigator.clipboard.writeText(text); }
+  catch (e) {                                      // older browsers / no clipboard permission
+    const t = document.createElement("textarea"); t.value = text; document.body.appendChild(t);
+    t.select(); document.execCommand("copy"); t.remove();
+  }
+  $("copylog").textContent = "✓ Copied"; setTimeout(() => $("copylog").textContent = "📋 Copy", 1500);
+};
+
+// the live view costs the game a capture per frame: only stream while this tab is visible
+document.addEventListener("visibilitychange", () => {
+  $("view").src = document.hidden ? "" : "/stream.mjpg?" + Date.now();
+});
+
+loadOptions().then(runCheck);
+loadPlan();
+loadHistory();
+setInterval(loadHistory, 60000);
+connect();
+</script>
+</body>
+</html>

@@ -1,0 +1,271 @@
+"""The spawned-supply skills (Prayer, Fletching, Crafting) and Thieving, with a fake game."""
+import types
+
+import pytest
+
+from lumberjack import actions, items
+from lumberjack.core import backpack, gamestate
+from lumberjack.skills import spawn_tasks as S
+from lumberjack.skills import thieving_task as T
+from lumberjack.skills.base import StopBot
+
+
+class Game:
+    """A backpack, skills, a menu and NPCs - what the bots read through game data."""
+
+    def __init__(self):
+        self.inv = [{"id": -1, "key": None, "name": None} for _ in range(28)]
+        self.skills_ = {k: {"level": 1, "boosted": 1, "xp": 0} for k in gamestate.SKILLS}
+        self.skills_["hitpoints"] = {"level": 10, "boosted": 10, "xp": 1154}
+        self.top = None
+        self.npcs_ = []
+
+    def put(self, key, n=1):
+        for _ in range(n):
+            i = next(i for i, s in enumerate(self.inv) if s["id"] < 0)
+            self.inv[i] = {"id": 1, "key": key, "name": key}
+
+    def skills(self):
+        return self.skills_
+
+    def player(self):
+        return {"tile": [3200, 3200], "plane": 0, "logged_in": True, "index": 1}
+
+    def menu(self):
+        return {"open": False, "entries": [{"verb": self.top, "subject": ""}] if self.top else []}
+
+    def npcs(self, name=None):
+        return self.npcs_
+
+
+@pytest.fixture
+def game(monkeypatch):
+    g = Game()
+    monkeypatch.setattr(backpack, "slots", lambda: g.inv)
+    monkeypatch.setattr(gamestate, "shared", lambda: g)
+    monkeypatch.setattr(gamestate, "skill", lambda name: {"base": g.skills_[name]["level"]})
+    def spawn(ctx, key, n=1):
+        if key.endswith(("_rune", "_arrow", "coins")):           # stackables: one slot
+            g.put(key)
+            g.inv[next(i for i, s in reversed(list(enumerate(g.inv))) if s["key"] == key)]["count"] = n
+        else:
+            g.put(key, min(n, sum(s["id"] < 0 for s in g.inv)))
+    monkeypatch.setattr(items, "spawn", spawn)
+    monkeypatch.setattr(actions, "dismiss_dialog", lambda ctx: False)
+    monkeypatch.setattr(actions, "drop_known", lambda ctx, gs, slots: [g.inv.__setitem__(
+        i, {"id": -1, "key": None, "name": None}) for i in slots] and len(slots))
+    return g
+
+
+def bot(cls, game, **kw):
+    b = cls.__new__(cls)
+    b.ctx = types.SimpleNamespace(sleep=lambda s: None)
+    b.inp = types.SimpleNamespace(move=lambda *a, **k: None, close=lambda: None)
+    b.log = __import__("logging").getLogger("t")
+    b.gs, b.state, b.home = game, "", [3200, 3200]
+    b.done, b.blocked, b.current, b.spawn_tools = 0, set(), None, True
+    b.sleep = lambda s: None
+    b.check_stop = lambda: None
+    for k, v in kw.items():
+        setattr(b, k, v)
+    return b
+
+
+def test_prayer_spawns_dragon_bones_and_buries(game, monkeypatch):
+    p = bot(S.Prayer, game)
+    p.restock(game.inv, {})
+    assert sum(s["key"] == "dragon_bones" for s in game.inv) == 28
+    buried = []
+
+    def use(ctx, gs, i, verb):
+        assert verb == "Bury"
+        buried.append(i)
+        game.inv[i] = {"id": -1, "key": None, "name": None}
+        return True
+    monkeypatch.setattr(actions, "use_slot", use)
+    supply = [i for i, s in enumerate(game.inv) if s["key"] == "dragon_bones"]
+    assert p.process(game.inv, supply, {}) == 28 and len(buried) == 28
+
+
+def test_crafting_picks_gem_by_level_and_keeps_chisel(game, monkeypatch):
+    game.skills_["crafting"]["level"] = 30
+    c = bot(S.Crafter, game)
+    assert c.best_supply(30) == "uncut_emerald" and c.best_supply(1) == "uncut_opal"
+    game.put("chisel")
+    game.put("sapphire", 3)                                  # last load's cut gems
+    monkeypatch.setattr(items, "ensure", lambda *a, **k: -1)
+    tools = c.ensure_tools()
+    c.restock(game.inv, tools)
+    keys = [s["key"] for s in game.inv]
+    assert keys[0] == "chisel" and keys.count("uncut_emerald") == 27 and "sapphire" not in keys
+    assert all(k in items.BY_KEY for k in list(S.GEMS) + ["chisel", "knife", "dragon_bones"])
+
+
+def test_supply_task_blocks_a_supply_that_never_works(game, monkeypatch):
+    f = bot(S.Fletcher, game)
+    game.skills_["fletching"]["level"] = 40
+    assert f.best_supply(40) == "willow_logs"
+    f.blocked.add("willow_logs")
+    assert f.best_supply(40) == "oak_logs"
+
+
+def test_thief_success_stun_and_eating(game, monkeypatch):
+    from lumberjack.core import interact
+    t = bot(T.Thief, game, targets=["man", "woman"], eat_below=0.5, stolen=0, caught=0, eaten=0)
+    game.npcs_ = [{"name": "Man", "ops": ["Talk-to", "Attack", "Pickpocket"], "dist": 2, "screen": [300, 200],
+                   "tile": [3201, 3201]}, {"name": "Cow", "ops": ["Attack"], "dist": 1, "screen": [310, 200],
+                                           "tile": [3200, 3201]}]
+    monkeypatch.setattr(interact, "on_screen", lambda x, y, margin=4: True)
+    n = t.pick_target()
+    assert n["name"] == "Man"
+    outcome = {"xp": 8, "hp": 0}
+
+    def pick(ctx, gs, pts, verb, subject):
+        assert verb == "Pickpocket" and subject == "Man"
+        game.skills_["thieving"]["xp"] += outcome["xp"]
+        game.skills_["hitpoints"]["boosted"] -= outcome["hp"]
+        return (300, 200)
+    monkeypatch.setattr(interact, "use_option", pick)
+    t.attempt(n)
+    assert t.stolen == 1 and t.caught == 0
+    outcome.update(xp=0, hp=2)
+    t.attempt(n)
+    assert t.caught == 1
+    game.skills_["hitpoints"]["boosted"] = 4                  # below 50%: eat - none, so spawn
+    eaten = []
+    monkeypatch.setattr(actions, "use_slot", lambda ctx, gs, i, verb: eaten.append(game.inv[i]["key"]) or True)
+    t.ensure_hp()
+    assert eaten == ["lobster"] and t.eaten == 1
+    t.spawn_tools = False
+    game.inv = [{"id": -1, "key": None, "name": None} for _ in range(28)]
+    with pytest.raises(StopBot):
+        t.ensure_hp()
+
+
+def test_thief_makes_room_but_keeps_coins_and_food(game):
+    t = bot(T.Thief, game)
+    game.put("coins")
+    game.put("lobster", 2)
+    game.put("potato_seed", 25)
+    t.make_room()
+    assert [s["key"] for s in game.inv if s["id"] >= 0] == ["coins", "lobster", "lobster"]
+
+
+def test_thieving_route_and_place_check_targets():
+    from lumberjack.nav import training
+    assert training.pick("thieving", 30)[1]["thieve"] == ["al-kharid_warrior", "al_kharid_warrior"]
+    gs = types.SimpleNamespace(npcs=lambda name=None: [
+        {"name": "Guard", "ops": ["Attack", "Pickpocket"], "tile": [1, 1], "dist": 3},
+        {"name": "Guard", "ops": ["Attack", "Pickpocket"], "tile": [9, 9], "dist": 30}])
+    assert training.find_targets(gs, "thieving", {"thieve": ["guard"]}, 15) == [[1, 1]]
+
+
+def test_smither_uses_bar_on_anvil_and_makes_daggers(game, monkeypatch):
+    from lumberjack.core import interact
+    from lumberjack.ui import widgets
+    sm = bot(S.Smither, game)
+    assert sm.best_supply(33) == "steel_bar" and all(k in items.BY_KEY for k in S.Smither.SUPPLY)
+    game.put("hammer")
+    game.put("steel_bar", 5)
+    anvil = {"name": "Anvil", "ops": [], "screen": [300, 200], "body": [300, 190], "tile": [1, 1], "dist": 2}
+    game.locs = lambda radius, name=None: [anvil]
+    used, hovered = [], []
+    monkeypatch.setattr(actions, "use_slot", lambda ctx, gs, i, verb: used.append((i, verb)) or True)
+    monkeypatch.setattr(interact, "on_screen", lambda x, y, margin=4: True)
+    sm.inp = types.SimpleNamespace(move=lambda x, y, **k: hovered.append((x, y)), click=lambda *a: None,
+                                   close=lambda: None)
+    game.top = "Use"
+    game.menu = lambda: {"open": False, "entries": [{"verb": "Use", "subject": "Steel bar -> Anvil"}]}
+
+    def make(ctx, gs, product=None, amounts=()):
+        assert product == "dagger" and amounts[0] == "All"
+        for i, s in enumerate(game.inv):
+            if s["key"] == "steel_bar":
+                game.inv[i] = {"id": 1, "key": "steel_dagger", "name": "Steel dagger"}
+        return True
+    monkeypatch.setattr(widgets, "make", make)
+    supply = [i for i, s in enumerate(game.inv) if s["key"] == "steel_bar"]
+    assert sm.process(game.inv, supply, {"hammer": 0}) == 5
+    assert used == [(1, "Use")]
+    game.locs = lambda radius, name=None: []
+    with pytest.raises(StopBot):
+        sm.process(game.inv, supply, {"hammer": 0})
+
+
+def test_best_bow_and_ranged_equip(game, monkeypatch):
+    assert items.best_bow(1) == ("shortbow", "iron_arrow") and items.best_bow(45)[0] == "yew_shortbow"
+    assert all(k in items.BY_KEY for b in items.BOWS for k in (b[0], b[2]))
+    from lumberjack.skills import combat
+    f = bot(combat.Fighter, game, train="ranged")
+    game.skills_["ranged"]["level"] = 22
+    worn = []
+    f._worn = lambda: [{"key": k, "count": c} for k, c in worn]
+    wielded = []
+
+    def use(ctx, gs, i, verb):
+        assert verb == "Wield"
+        k = game.inv[i]["key"]
+        wielded.append(k)
+        worn.append((k, 1000 if k.endswith("arrow") else 1))
+        game.inv[i] = {"id": -1, "key": None, "name": None}
+        return True
+    monkeypatch.setattr(actions, "use_slot", use)
+    f.equip_ranged()
+    assert wielded == ["willow_shortbow", "mithril_arrow"]
+    f.equip_ranged()                                     # all worn: nothing more
+    assert wielded == ["willow_shortbow", "mithril_arrow"]
+
+
+def test_magic_spell_by_level_and_casting(game, monkeypatch):
+    from lumberjack.skills import magic_task as M
+    from lumberjack.ui import widgets
+    assert M.best_spell(1)[0] == "Wind Strike" and M.best_spell(30)[0] == "Varrock Teleport"
+    assert M.best_spell(60)[0] == "High Level Alchemy"
+    assert all(k in items.BY_KEY for _, _, _, r in M.SPELLS for k in r) and M.ALCH_ITEM in items.BY_KEY
+    m = bot(M.Mage, game, casts=0, fails=0, targets=["chicken"])
+    m.ensure_runes({"law_rune": 1, "air_rune": 3})
+    assert {s["key"] for s in game.inv if s["id"] >= 0} == {"law_rune", "air_rune"}
+    clicks = []
+    m.inp = types.SimpleNamespace(click=lambda *a: clicks.append(a), move=lambda *a, **k: None, close=lambda: None)
+    monkeypatch.setattr(actions, "open_tab", lambda ctx, tab: None)
+    monkeypatch.setattr(widgets, "find", lambda gs, match=None: [
+        {"x": 571, "y": 229, "w": 24, "h": 24, "text": "", "name": "Cast Varrock Teleport", "ops": []}])
+
+    def tele(*a):
+        clicks.append(a)
+        game.skills_["magic"]["xp"] += 35
+    m.inp.click = tele
+    assert m.cast("Varrock Teleport", "tele") and m.casts == 1 and "teleport" in m.state
+    monkeypatch.setattr(widgets, "find", lambda gs, match=None: [])
+    assert not m.cast("Varrock Teleport", "tele")
+
+
+def test_magic_route_places():
+    from lumberjack.nav import training
+    assert training.pick("magic", 1)[0] == "★ Lumbridge chickens" and training.pick("magic", 40) == (None, {})
+    assert None not in training.places_to_check()
+
+
+def test_melee_gear_by_level(game, monkeypatch):
+    assert items.melee_gear(1, 1)[0] == "bronze_scimitar" or items.melee_gear(1, 1)[0] == "iron_scimitar"
+    assert items.melee_gear(42, 31) == ["rune_scimitar", "adamant_full_helm", "adamant_platebody",
+                                        "adamant_platelegs", "adamant_kiteshield"]
+    assert all(k in items.BY_KEY for k in items.melee_gear(42, 31) + items.melee_gear(5, 20))
+    from lumberjack.skills import combat
+    f = bot(combat.Fighter, game, train="auto")
+    game.skills_["attack"]["level"], game.skills_["defence"]["level"] = 21, 6
+    worn = []
+    f._worn = lambda: [{"key": k} for k in worn]
+    verbs = []
+
+    def use(ctx, gs, i, verb):
+        verbs.append(verb)
+        k = game.inv[i]["key"]
+        if verb == ("Wield" if k.endswith(("scimitar", "kiteshield")) else "Wear"):
+            worn.append(k)
+            game.inv[i] = {"id": -1, "key": None, "name": None}
+            return True
+        return False
+    monkeypatch.setattr(actions, "use_slot", use)
+    f.equip_melee()
+    assert worn == ["mithril_scimitar", "steel_full_helm", "steel_platebody", "steel_platelegs", "steel_kiteshield"]
