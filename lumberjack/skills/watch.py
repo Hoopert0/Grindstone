@@ -71,10 +71,15 @@ def plan_checks(bot, stop_cls):
 def check_moved(bot, me, now, stop_cls):
     """Stop when we jumped far between two checks (died, teleported by a random event). The bot's
     own teleports are left alone: their state says "teleporting" and the next check starts over."""
+    from lumberjack.nav import places
     tile, plane = me.get("tile"), me.get("plane", 0)
     last = getattr(bot, "_watch_pos", None)
+    ours = last is not None and places.teleported_at >= last[2] - 1.0   # we ::tele'd since the last check
     if tile is None or "teleport" in str(getattr(bot, "state", "")):
         bot._watch_pos = None
+        return
+    if ours:                                   # start over from where the teleport took us
+        bot._watch_pos = (tuple(tile), plane, now)
         return
     bot._watch_pos = (tuple(tile), plane, now)
     if last is None:

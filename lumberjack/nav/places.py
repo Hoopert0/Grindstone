@@ -22,6 +22,7 @@ PLACES = Path(__file__).resolve().parents[1] / "assets" / "places.json"
 ARRIVE = 3              # tiles from the place that count as "there"
 WALK_MAX = 60           # walk without teleporting up to this far
 TELE_WAIT_S = 8.0
+teleported_at = float("-inf")   # (monotonic) our last ::tele - the jump guard leaves it alone
 
 
 def load_saved():
@@ -81,10 +82,22 @@ def _wait_arrival(ctx, gs, tile, timeout):
 
 
 def teleport(ctx, gs, tile, plane=0):
-    """Admin teleport (::tele). True once the game data shows us there."""
+    """Admin teleport (::tele). True once the game data shows us there - with the standard
+    camera, so what we came for is on screen (an off-screen altar cost Runecrafting its clicks)."""
+    global teleported_at
     ctx.inp.move(260, 300)
+    teleported_at = time.monotonic()
     ctx.inp.type_text(f"::tele {tile[0]} {tile[1]} {plane}", enter=True)
-    return _wait_arrival(ctx, gs, tile, TELE_WAIT_S)
+    arrived = _wait_arrival(ctx, gs, tile, TELE_WAIT_S)
+    teleported_at = time.monotonic()
+    if not arrived:
+        return False
+    try:
+        from lumberjack import actions
+        actions.reset_camera(ctx)
+    except Exception as e:                     # a camera hiccup isn't a failed teleport
+        log.debug("camera reset after teleport: %s", e)
+    return True
 
 
 def travel(ctx, gs, place, use_tele=True):

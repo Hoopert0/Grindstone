@@ -2,6 +2,7 @@
 import os
 import sys
 import threading
+import time
 import types
 from pathlib import Path
 
@@ -239,6 +240,16 @@ def test_watch_moved_away():
     bot2.state = "fishing"
     watch.check_moved(bot2, {"tile": [3222, 3218]}, 110.0, Stop)      # our own teleport: fine
     watch.check_moved(bot2, {"tile": [3240, 3240]}, 140.0, Stop)      # 22 tiles in 30 s: walked
+    # a ::tele between two checks (the state never said "teleporting" at a check): ours, fine
+    from lumberjack.nav import places
+    bot3 = types.SimpleNamespace(state="raking weeds")
+    watch.check_moved(bot3, {"tile": [3254, 3189]}, 100.0, Stop)
+    places.teleported_at = 104.0
+    try:
+        watch.check_moved(bot3, {"tile": [3054, 3307]}, 108.0, Stop)
+        watch.check_moved(bot3, {"tile": [3055, 3307]}, 113.0, Stop)
+    finally:
+        places.teleported_at = float("-inf")
 
 
 def test_tidy_banks_what_the_next_task_does_not_use(monkeypatch):
@@ -617,3 +628,20 @@ def test_autopilot_resumes_as_autopilot(monkeypatch, tmp_path):
             break
         threading.Event().wait(0.05)
     assert started and started[0].autopilot and started[0].target == 70 and started[0].skip == ["agility"]
+
+
+def test_single_task_resumes_with_its_time_left(monkeypatch, tmp_path):
+    marker = tmp_path / "plan_running"
+    monkeypatch.setattr(server, "PLAN_RUNNING", marker)
+    s = server.Settings(task="fishing", max_minutes=60)
+    server._mark_single(s, time.time() + 30 * 60)              # 30 of its 60 minutes left
+    started = []
+    monkeypatch.setattr(server.ctl, "start", lambda st: started.append(st) or None)
+    from lumberjack.core import gamestate
+    monkeypatch.setattr(gamestate, "shared", lambda: object())
+    server.resume_plan()
+    for _ in range(50):
+        if started:
+            break
+        threading.Event().wait(0.05)
+    assert started and started[0].task == "fishing" and 29 < started[0].max_minutes <= 30

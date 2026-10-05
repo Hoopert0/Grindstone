@@ -769,6 +769,11 @@ class BotController:
         self.end_reason = None
         log = logging.getLogger(s.task)
 
+        resume = load_plan().resume                # the Plan tab's "resume after a restart" applies too
+        if resume:                                 # a panel restart (update, crash) carries on with it
+            ends_at = time.time() + s.max_minutes * 60 if s.max_minutes else None
+            _mark_single(s, ends_at)
+
         def run():
             try:
                 self._run_with_recovery(s, log, label=f"Running {s.task}", first_as_is=True)
@@ -778,6 +783,8 @@ class BotController:
                     log.exception("Run crashed")
             finally:
                 self._doing(None)
+                if resume and not self.updating:
+                    PLAN_RUNNING.unlink(missing_ok=True)
 
         self.thread = threading.Thread(target=run, name="bot", daemon=True)
         self.thread.start()
@@ -1337,7 +1344,12 @@ class BotController:
             log.info("Banked %d item(s) the next task doesn't need", len(full) - len(keep))
         elif products:
             log.info("No bank nearby - dropping %d item(s) from the last task", len(products))
-            actions.drop_all(ctx, keep=set(full) - set(products))
+            from lumberjack.core import gamestate
+            gs = gamestate.shared()
+            if gs is not None:                    # picked by name: drop them by name (the generic
+                actions.drop_known(ctx, gs, products)   # drop refuses a starter sword as "not a product")
+            else:
+                actions.drop_all(ctx, keep=set(full) - set(products))
 
     def stop(self):
         self.stop_event.set()
@@ -2102,6 +2114,15 @@ async def ws(sock: WebSocket):
 _running_plan = None        # the plan being run (Autopilot isn't saved in plan.json): resumed as is
 
 
+def _mark_single(s, ends_at):
+    try:
+        PLAN_RUNNING.parent.mkdir(parents=True, exist_ok=True)
+        PLAN_RUNNING.write_text(json.dumps({"version": version.label(), "single": s.model_dump(),
+                                            "ends_at": ends_at}))
+    except OSError:
+        pass
+
+
 def _mark_running(last_step, ends_at=None):
     try:
         PLAN_RUNNING.parent.mkdir(parents=True, exist_ok=True)
@@ -2300,18 +2321,59 @@ def login_set(li: LoginIn):
     return {"ok": True, "has_password": bool(c["password"])}
 
 
+def _resume_single(s):
+    """Start the task that was running when the panel closed, once the game answers."""
+    log = logging.getLogger("panel")
+
+    def go():
+        from lumberjack.core import gamestate
+        log.info("%s was running when the panel closed - resuming it once the game answers", s.task)
+        end = time.monotonic() + RESUME_WAIT_S
+        while time.monotonic() < end:
+            if ctl.running or not PLAN_RUNNING.exists():
+                return
+            if gamestate.shared() is not None:
+                try:
+                    ends_at = json.loads(PLAN_RUNNING.read_text()).get("ends_at")
+                except (OSError, ValueError, AttributeError):
+                    ends_at = None
+                if ends_at:
+                    left = (ends_at - time.time()) / 60
+                    if left <= 0:
+                        log.info("Its time was up while the panel was closed - not resuming")
+                        PLAN_RUNNING.unlink(missing_ok=True)
+                        return
+                    s2 = s.model_copy(update={"max_minutes": left})
+                else:
+                    s2 = s
+                err = ctl.start(s2)
+                if err:
+                    log.warning("Couldn't resume %s: %s", s.task, err)
+                    PLAN_RUNNING.unlink(missing_ok=True)
+                return
+            time.sleep(10)
+        PLAN_RUNNING.unlink(missing_ok=True)
+
+    threading.Thread(target=go, name="resume", daemon=True).start()
+
+
 def resume_plan():
     """The panel closed while a plan ran (an update, a crash, the PC slept): start it again once
     the game answers. Stopping the plan (Stop / F12 / it finished) removes the marker."""
     if not PLAN_RUNNING.exists():
         return
     plan = load_plan()
+    single = None
     try:                                        # the plan that was running (Autopilot included)
-        saved = json.loads(PLAN_RUNNING.read_text()).get("plan")
-        if saved:
-            plan = Plan(**saved)
+        mark = json.loads(PLAN_RUNNING.read_text())
+        if mark.get("plan"):
+            plan = Plan(**mark["plan"])
+        if mark.get("single"):                  # or one task started with Start
+            single = Settings(**mark["single"])
     except (OSError, ValueError, TypeError, AttributeError):
         pass
+    if single is not None:
+        return _resume_single(single)
     if not plan.resume or not (plan.steps or plan.autopilot):
         PLAN_RUNNING.unlink(missing_ok=True)
         return

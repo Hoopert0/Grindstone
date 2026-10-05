@@ -350,3 +350,22 @@ def test_runecrafting_teleports_by_level_and_crafts(game, monkeypatch):
     assert any(s["key"] == "air_rune" for s in game.inv)
     r.teardown()
     assert teles[-1] == ((3200, 3200), 0)                                       # back where it started
+
+
+def test_thief_waits_out_combat_then_fights_back(game, monkeypatch):
+    from lumberjack.core import interact
+    t = bot(T.Thief, game)
+    clock = {"t": 100.0}
+    monkeypatch.setattr(T.time, "monotonic", lambda: clock["t"])
+    me = {"tile": [3200, 3200], "plane": 0, "index": 1, "in_combat": True}
+    game.player = lambda raw=False: me
+    attacker = {"name": "Al-Kharid warrior", "ops": ["Attack", "Pickpocket"], "interacting": 32769,
+                "in_combat": True, "screen": [300, 200], "body": [300, 190], "tile": [3201, 3200], "dist": 1}
+    game.npcs_ = [attacker]
+    attacks = []
+    monkeypatch.setattr(interact, "use_option", lambda ctx, gs, pts, verb, subject: attacks.append(verb) or (1, 1))
+    assert t.out_of_combat() and attacks == []              # first: wait (a catch's hit, likely)
+    clock["t"] += T.COMBAT_WAIT_S + 1
+    assert t.out_of_combat() and attacks == ["Attack"]      # still attacked: hit back
+    me["in_combat"] = False
+    assert not t.out_of_combat()                             # free again: pickpocket on

@@ -16,7 +16,8 @@ from lumberjack.skills.base import BotBase, StopBot
 
 ATTEMPT_S = 1.9            # a pickpocket takes ~3 ticks
 STUN_S = 5.0               # caught: stunned ~4 s
-NO_TARGET_S = 90           # nothing to pickpocket this long -> stop (a plan travels back)
+NO_TARGET_S = 90
+COMBAT_WAIT_S = 6.0        # still attacked after this long: fight back           # nothing to pickpocket this long -> stop (a plan travels back)
 FOOD = "lobster"
 FOOD_SPAWN = 10
 LEVELS = {"man": 1, "woman": 1, "farmer": 10, "al-kharid_warrior": 25, "al_kharid_warrior": 25,
@@ -52,6 +53,8 @@ class Thief(BotBase):
             while True:
                 self.check_stop()
                 self.ensure_hp()
+                if self.out_of_combat():
+                    continue
                 self.make_room()
                 n = self.pick_target()
                 if n is None:
@@ -73,6 +76,28 @@ class Thief(BotBase):
     def _hp_xp(self):
         s = self.gs.skills()
         return s["hitpoints"]["boosted"], s["hitpoints"]["level"], s["thieving"]["xp"]
+
+    def out_of_combat(self):
+        """The server refuses pickpockets while we're in combat (a catch's hit counts too): wait
+        for it to pass, and hit back at anything that keeps attacking us. True if we waited."""
+        from lumberjack.core import interact
+        me = self.gs.player()
+        if not me.get("in_combat"):
+            self.combat_since = None
+            return False
+        now = time.monotonic()
+        self.combat_since = getattr(self, "combat_since", None) or now
+        mine = 32768 + me.get("index", -1)
+        attacker = next((n for n in self.gs.npcs() if n.get("interacting") == mine and n.get("in_combat")), None)
+        if attacker is not None and now - self.combat_since > COMBAT_WAIT_S and "Attack" in attacker["ops"]:
+            self.state = f"fighting off a {attacker['name']}"
+            self.log.info("A %s keeps attacking - fighting back", attacker["name"])
+            interact.use_option(self.ctx, self.gs, interact.points_for(attacker), "Attack", attacker["name"])
+            self.sleep(3.0)
+            return True
+        self.state = "in combat - waiting it out (can't pickpocket)"
+        self.sleep(1.0)
+        return True
 
     def pick_target(self):
         from lumberjack.core import interact
