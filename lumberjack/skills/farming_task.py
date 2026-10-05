@@ -288,13 +288,7 @@ class Farmer(BotBase):
             actions.drop_known(self.ctx, self.gs, junk)
 
     def leave(self):
-        import types
-        from lumberjack.nav import places
-        if not self.came_from:
-            return
-        x, y, plane = self.came_from
-        me = self.gs.player()
-        if max(abs(me["tile"][0] - x), abs(me["tile"][1] - y)) <= 8:
-            return
-        ctx = types.SimpleNamespace(inp=self.inp, sleep=time.sleep)
-        places.teleport(ctx, self.gs, (x, y), plane)
+        """Stay put: a run also ends before every retry, and teleporting back to where it started
+        sent us away from the spot each time. The next step travels by itself (Autopilot surfaces
+        at Lumbridge first when it needs open ground)."""
+        return

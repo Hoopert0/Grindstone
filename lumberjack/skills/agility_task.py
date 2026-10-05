@@ -185,14 +185,7 @@ class Agility(BotBase):
             raise StopBot(f"couldn't teleport to the {self.course['name']}")
 
     def leave(self):
-        """Back to where the run started (the next task begins there, not on a course)."""
-        import types
-        from lumberjack.nav import places
-        if not (self.course and self.came_from):
-            return
-        me = self.gs.player()
-        x, y, plane = self.came_from
-        if (x, y, plane) == (me["tile"][0], me["tile"][1], me.get("plane", 0)):
-            return
-        ctx = types.SimpleNamespace(inp=self.inp, sleep=time.sleep)
-        places.teleport(ctx, self.gs, (x, y), plane)
+        """Stay put: a run also ends before every retry, and teleporting back to where it started
+        sent us away from the spot each time. The next step travels by itself (Autopilot surfaces
+        at Lumbridge first when it needs open ground)."""
+        return

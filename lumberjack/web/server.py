@@ -1163,6 +1163,9 @@ class BotController:
                     continue
                 try:
                     self._recover(ctx)
+                    # tidy first: a bank trip walks away, and the task starts where we stand
+                    self._doing("tidying the backpack")
+                    self._tidy_backpack(ctx, log, s.task)
                     if target:
                         where = place_name if target is place else f"{target['tile']}"
                         self._doing(f"travelling to {where}")
@@ -1170,8 +1173,6 @@ class BotController:
                             log.warning("Couldn't get to %s (attempt %d)", where, failures + 1)
                             failures += 1
                             continue
-                    self._doing("tidying the backpack")
-                    self._tidy_backpack(ctx, log, s.task)
                 finally:
                     ctx.inp.close()
                 self._doing(None)

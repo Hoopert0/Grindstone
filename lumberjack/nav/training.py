@@ -109,7 +109,8 @@ ROUTES = {
 }
 AUTO = "auto"           # a plan step's place: pick it from the route by level
 SURFACE = "★ Lumbridge"
-UNDERGROUND_Y = 6400    # world y beyond this: dungeons, caves, instanced rooms
+UNDERGROUND_Y = 4000    # world y beyond this is off the surface map: altar rooms (~4800), the
+                        # Stronghold of Security (~5200), dungeons and caves (~9000+)
 
 
 def underground(tile):

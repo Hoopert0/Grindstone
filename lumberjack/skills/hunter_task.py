@@ -9,7 +9,6 @@
 Traps, creatures and where they live come from the 2009scape server (Traps.java, npc_spawns).
 """
 import random
-import time
 
 from lumberjack import actions, items
 from lumberjack.skills.base import BotBase, StopBot
@@ -204,11 +203,7 @@ class Hunter(BotBase):
             self.use(loc, "Check" if caught else "Dismantle")
 
     def leave(self):
-        """Traps up, then back to where the run started."""
-        import types
-        from lumberjack.nav import places
-        if not (self.spot and self.came_from):
-            return
-        ctx = types.SimpleNamespace(inp=self.inp, sleep=time.sleep)
-        x, y, plane = self.came_from
-        places.teleport(ctx, self.gs, (x, y), plane)
+        """Stay put: a run also ends before every retry, and teleporting back to where it started
+        sent us away from the spot each time. The next step travels by itself (Autopilot surfaces
+        at Lumbridge first when it needs open ground)."""
+        return

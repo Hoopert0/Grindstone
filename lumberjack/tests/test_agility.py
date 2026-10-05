@@ -109,11 +109,12 @@ def test_lost_too_often_stops(course, monkeypatch):
         a.loop()
 
 
-def test_leave_teleports_back(course, monkeypatch):
+def test_leave_stays_put(course, monkeypatch):
+    """The end of a run (also before every retry) no longer teleports away from the course."""
     a = runner(course, monkeypatch)
     course.tile = (2474, 3437)
     a.leave()
-    assert course.tile == (3222, 3218)
+    assert course.tile == (2474, 3437)
 
 
 def test_course_areas_never_overlap_and_landings_lead_on():

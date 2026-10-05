@@ -645,3 +645,11 @@ def test_single_task_resumes_with_its_time_left(monkeypatch, tmp_path):
             break
         threading.Event().wait(0.05)
     assert started and started[0].task == "fishing" and 29 < started[0].max_minutes <= 30
+
+
+def test_off_the_surface_map():
+    from lumberjack.nav import training
+    assert training.underground((2841, 4829))           # air altar room
+    assert training.underground((3109, 9835))           # Edgeville dungeon
+    assert not training.underground((2474, 3437))       # Gnome agility course
+    assert not training.underground((3054, 3307))       # Falador farm

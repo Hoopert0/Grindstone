@@ -353,8 +353,9 @@ def test_runecrafting_teleports_by_level_and_crafts(game, monkeypatch):
     r.restock(game.inv, {})                       # level 27: on to the cosmic altar, runes kept (one stack)
     assert teles[-1] == ((2162, 4833), 0)
     assert any(s["key"] == "air_rune" for s in game.inv)
+    n = len(teles)
     r.teardown()
-    assert teles[-1] == ((3200, 3200), 0)                                       # back where it started
+    assert len(teles) == n                                       # stays at the altar (retries come back here)
 
 
 def test_thief_waits_out_combat_then_fights_back(game, monkeypatch):

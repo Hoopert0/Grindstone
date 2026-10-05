@@ -14,7 +14,6 @@ All of them need the game's own data (items by name) and 'Spawn missing tools'.
 """
 import logging
 import time
-import types
 
 from lumberjack import actions, items
 from lumberjack.skills.base import BotBase, StopBot
@@ -583,12 +582,11 @@ class Runecrafter(SupplyTask):
         pass                                        # the altar room is small: stay by the altar
 
     def teardown(self):
-        from lumberjack.nav import places
-        if getattr(self, "altar", None) and getattr(self, "came_from", None):
-            x, y, plane = self.came_from
-            self.log.info("Leaving the altar - teleporting back")
-            ctx = types.SimpleNamespace(inp=self.inp, sleep=time.sleep)
-            places.teleport(ctx, self.gs, (x, y), plane)
+        """Stay put: a run also ends before every retry, and teleporting back to where it started
+        sent us away from the spot each time. The next step travels by itself (Autopilot surfaces
+        at Lumbridge first when it needs open ground)."""
+        return
+
 
 
 def backpack_slots():
