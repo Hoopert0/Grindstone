@@ -54,7 +54,7 @@ food and looting as Combat. Route: as Combat, by Ranged level.
 ### 🪄 Magic · spawns
 | Level | Spell |
 |---|---|
-| 1 | Wind Strike on chickens |
+| 1 | Wind Strike on chickens (Water Strike 5, Earth Strike 9, Fire Strike 13, Wind Bolt 17) |
 | 21 | Low Level Alchemy on a stack of arrows |
 | 25 | Varrock Teleport |
 | 45 | Camelot Teleport |

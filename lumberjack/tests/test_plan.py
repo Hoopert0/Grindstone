@@ -563,3 +563,22 @@ def test_every_task_builds_its_bot(monkeypatch):
         names[task] = getattr(bot, "name", "woodcutting")
     for task in ("herblore", "runecrafting", "agility", "hunter", "fishing", "thieving"):
         assert names[task] == task
+
+
+def test_autopilot_surfaces_before_a_placeless_step(monkeypatch):
+    from lumberjack.core.gamestate import SKILLS
+    ctl, built = runner(monkeypatch, [])
+    lv = {s: 1 for s in SKILLS}
+    lv.update(attack=10, strength=10, defence=10)
+    monkeypatch.setattr(server, "_levels", lambda: dict(lv))
+    monkeypatch.setattr(server, "_my_tile", lambda: (3109, 9835))      # still in the Edgeville dungeon
+    steps = []
+
+    def step(st, p, log):
+        steps.append((st.task, st.place))
+        ctl.stop_event.set()
+        return True
+    monkeypatch.setattr(ctl, "_run_step", step)
+    ctl.plan_info = {}
+    ctl._run_plan(server.Plan(autopilot=True, target=99))
+    assert steps == [("prayer", "★ Lumbridge")]

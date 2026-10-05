@@ -54,7 +54,7 @@ every skill for hours, moving to better spots and better gear as you level up.
 | ⛏️ | Mining | Best ore for your level; learns which rock holds which ore; drops or banks |
 | ⚔️ | Combat | Melee, rotating Attack/Strength/Defence; eats, loots, buries bones |
 | 🎯 | Ranged | Combat with the best shortbow for your level and its arrows (spawned, worn) |
-| 🪄 | Magic | Wind Strike → Low Alchemy → Varrock/Camelot Teleport → High Alchemy |
+| 🪄 | Magic | Strikes and Wind Bolt → Low Alchemy → Varrock/Camelot Teleport → High Alchemy |
 | 🧤 | Thieving | Pickpockets men → Al Kharid warriors → guards → knights → paladins → heroes; handles stuns, eats |
 | 💀 | Slayer | Melee on the route's monsters with a matching Slayer task, set and renewed by itself |
 | 🏃 | Agility | Laps of the Gnome Stronghold course, the Barbarian Outpost course from 35; teleports back to the start when lost |

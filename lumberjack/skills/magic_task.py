@@ -1,6 +1,7 @@
 """Magic: cast the best training spell for the level, runes spawned (singleplayer admin).
 
-    1   Wind Strike on chickens       (stand by chickens: the route's place)
+    1   Wind Strike on chickens       (stand by chickens: the route's place) - then Water Strike 5,
+        Earth Strike 9, Fire Strike 13, Wind Bolt 17
     21  Low Level Alchemy on arrows   (a spawned stack: one arrow per cast)
     25  Varrock Teleport              (anywhere)
     45  Camelot Teleport
@@ -21,6 +22,11 @@ SPELLS = [
     (45, "Camelot Teleport", "tele", {"law_rune": 1, "air_rune": 5}),
     (25, "Varrock Teleport", "tele", {"law_rune": 1, "air_rune": 3, "fire_rune": 1}),
     (21, "Low Level Alchemy", "alch", {"fire_rune": 3, "nature_rune": 1}),
+    # combat spells on chickens until alchemy (runes per cast from the server's spell code)
+    (17, "Wind Bolt", "npc", {"air_rune": 2, "chaos_rune": 1}),
+    (13, "Fire Strike", "npc", {"air_rune": 2, "fire_rune": 3, "mind_rune": 1}),
+    (9, "Earth Strike", "npc", {"air_rune": 1, "earth_rune": 2, "mind_rune": 1}),
+    (5, "Water Strike", "npc", {"air_rune": 1, "water_rune": 1, "mind_rune": 1}),
     (1, "Wind Strike", "npc", {"air_rune": 1, "mind_rune": 1}),
 ]
 RUNE_SPAWN = 1000

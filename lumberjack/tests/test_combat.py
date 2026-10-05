@@ -502,3 +502,10 @@ def test_magic_casts_on_its_attacker_only_while_attacked():
     assert pick_targets([busy, near], me) == [near]
     me["interacting"] = 3                                         # we're on it already: keep going
     assert pick_targets([near, busy], me) == [busy]
+
+
+def test_magic_picks_the_best_combat_spell_until_alchemy():
+    from lumberjack.skills.magic_task import best_spell
+    assert best_spell(1)[0] == "Wind Strike" and best_spell(12)[0] == "Earth Strike"
+    assert best_spell(17)[0] == "Wind Bolt" and best_spell(21)[0] == "Low Level Alchemy"
+    assert best_spell(18)[2] == {"air_rune": 2, "chaos_rune": 1}

@@ -190,6 +190,16 @@ def _hours_text(h):
     return f"{h * 60:g} min" if h and h < 1 else f"{h:g} h"
 
 
+def _my_tile():
+    """Our world tile from the game, or None."""
+    from lumberjack.core import gamestate
+    gs = gamestate.shared()
+    try:
+        return tuple(gs.player()["tile"]) if gs else None
+    except Exception:
+        return None
+
+
 def _levels():
     """{skill: base level} from the game, or {} without game data."""
     from lumberjack.core import gamestate
@@ -957,8 +967,11 @@ class BotController:
                 if end:
                     minutes = max(0.1, min(minutes, (end - time.time()) / 60))
                 n += 1
+                place = training.AUTO if training.has_route(task) else None
+                if place is None and training.underground(_my_tile()):
+                    place = training.SURFACE       # e.g. cooking after hill giants: fires won't light below
                 step = PlanStep(task=task, minutes=minutes, level=until, options=dict(AUTOPILOT_OPTIONS),
-                                place=training.AUTO if training.has_route(task) else None)
+                                place=place)
                 self.plan_info.update(step=n, of="auto", task=task, place=step.place, attempt=0,
                                       until=_until_text(step), why=why, autopilot=True,
                                       total=sum(v for k, v in levels.items() if k in TRAINED_SKILLS),

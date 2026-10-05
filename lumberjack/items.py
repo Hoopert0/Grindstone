@@ -101,6 +101,7 @@ CATALOG = [
     ("Runes", "earth_rune", "Earth rune", 557, "x1000"),
     ("Runes", "fire_rune", "Fire rune", 554, "x1000"),
     ("Runes", "mind_rune", "Mind rune", 558, "x1000"),
+    ("Runes", "chaos_rune", "Chaos rune", 562, "x1000"),
     ("Runes", "nature_rune", "Nature rune", 561, "x1000"),
     ("Runes", "law_rune", "Law rune", 563, "x1000"),
     ("Runes", "pure_essence", "Pure essence", 7936, "Runecrafting"),

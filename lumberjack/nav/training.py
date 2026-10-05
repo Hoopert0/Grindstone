@@ -30,6 +30,8 @@ STARTER_PLACES = {
     "★ Stronghold ankou": {"tile": [2320, 5232], "plane": 0, "note": "Stronghold of Security, 3rd floor"},
     "★ Fire giants": {"tile": [2578, 9898], "plane": 0, "note": "Waterfall dungeon (aggressive)"},
     "★ Varrock anvil": {"tile": [3188, 3425], "plane": 0, "note": "anvils south of the west bank"},
+    "★ Lumbridge": {"tile": [3222, 3218], "plane": 0, "note": "where tasks with no place of their own "
+                                                             "start, after a step ended underground"},
     # from memory of the map, not the server's data: a run that finds nothing checks the place
     # in the game and moves it to the trees/rocks within 40 tiles
     "★ Seers' maples": {"tile": [2730, 3500], "plane": 0, "note": "maples north of Seers' bank"},
@@ -104,6 +106,12 @@ ROUTES = {
     ],
 }
 AUTO = "auto"           # a plan step's place: pick it from the route by level
+SURFACE = "★ Lumbridge"
+UNDERGROUND_Y = 6400    # world y beyond this: dungeons, caves, instanced rooms
+
+
+def underground(tile):
+    return tile is not None and tile[1] > UNDERGROUND_Y
 
 
 def has_route(task):
