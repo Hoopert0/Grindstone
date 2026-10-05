@@ -106,7 +106,7 @@ def start(force=False):
         raise RuntimeError("A 2009scape window from the launcher is open - the bot can't use that one. "
                            "Close it, then start Grindstone again.")
 
-    if savesync.SAVE.exists():           # (only when the save is shared through the repo)
+    if savesync.SYNC and savesync.SAVE.exists():   # (only when the save is shared through the repo)
         print("Downloading your latest character...", flush=True)
     err = savesync.acquire(force=force)
     if err:

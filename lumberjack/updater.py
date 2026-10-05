@@ -21,7 +21,8 @@ from lumberjack import procs
 
 REPO = Path(__file__).resolve().parents[1]
 LOCAL_DATA = ("lumberjack/assets/templates/", "lumberjack/assets/maps/",
-              "lumberjack/assets/places.json", "lumberjack/assets/fishing_spots.json")
+              "lumberjack/assets/places.json", "lumberjack/assets/fishing_spots.json",
+              "save/")                       # (the retired shared save: leftovers never block an update)
 
 
 def _git(*args, timeout=60):
@@ -62,7 +63,7 @@ def update():
     if _out("remote") in (None, ""):
         res.update(ok=True, message="not a copy from GitHub - nothing to update")
         return res
-    if savesync.SAVE.exists():                         # shared-save setup: the save sync pulls
+    if savesync.SYNC and savesync.SAVE.exists():       # shared-save setup: the save sync pulls
         savesync.ensure_identity()
         if not savesync.pull():
             res["message"] = "couldn't download the update (git pull failed - see the log)"

@@ -100,3 +100,12 @@ def test_a_replaced_history_never_drops_local_work(repos):
     git(author, "push", "-q", "-f", "origin", "fresh:main")
     r = updater.update()
     assert not r["ok"] and (friend / "lumberjack" / "mine.py").exists()
+
+
+def test_leftover_save_changes_never_block(repos):
+    author, friend = repos
+    publish(author)
+    (friend / "save" / "players").mkdir(parents=True)
+    (friend / "save" / "players" / "hero.json").write_text("{}")
+    r = updater.update()
+    assert r["ok"] and r["updated"], r

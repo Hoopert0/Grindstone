@@ -62,7 +62,7 @@ def main():
     if err:
         sys.exit(err)
     client = launch()
-    if savesync.SAVE.exists():
+    if savesync.SYNC and savesync.SAVE.exists():
         savesync.start_watcher(client.pid)   # uploads the save when you close the game
         print("Save will upload to GitHub automatically when you close the game.")
     print("Client starting (Direct3D off, input agent preloaded). Log in, then start the bot.")

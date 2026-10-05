@@ -1,4 +1,6 @@
-"""Share the 2009scape singleplayer save between PCs through this git repo.
+"""(Retired: SYNC = False) Share the 2009scape singleplayer save between PCs through this git repo.
+Each PC now keeps its own save in the game's folders (site_fixes.unlink_save undid the links);
+what's left in use here: git identity, wait_for_exit, REPO.
 
 The save folders (players, playerstats, eco, serverstore) live in <repo>/save and the
 game's data folder links to them (see link_save.ps1). What the bot learned in game (hover
@@ -18,6 +20,7 @@ import time
 from pathlib import Path
 from lumberjack import procs
 
+SYNC = False      # the character save is no longer shared through the repo (each PC keeps its own)
 REPO = Path(__file__).resolve().parents[1]
 SAVE = REPO / "save"
 LOCK = SAVE / "in_use.txt"
@@ -93,7 +96,7 @@ def lock_holder():
 
 def acquire(force=False):
     """Before playing. Returns an error message, or None when it's ours."""
-    if not SAVE.exists():
+    if not SYNC or not SAVE.exists():
         return None  # save not shared yet (link_save.ps1 not run) - nothing to guard
     ensure_identity()
     if not pull():
@@ -111,7 +114,7 @@ def acquire(force=False):
 
 def release():
     """After playing: upload the save and free the lock."""
-    if not SAVE.exists():
+    if not SYNC or not SAVE.exists():
         return True
     ensure_identity()
     if LOCK.exists() and lock_holder()[0] == socket.gethostname():
