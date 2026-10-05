@@ -202,8 +202,21 @@ def test_learn_rock(tmp_path, monkeypatch):
     m._ore_counts = lambda: {"copper": 1}
     assert m.learn_rock({}, 1) == "copper"
     assert m.rock_ores == {11: "copper", 450: "empty"}
-    assert mining.load_rock_ores() == {11: "copper", 450: "empty"}
+    loaded = mining.load_rock_ores()                     # saved, plus the server's built-in table
+    assert loaded[11] == "copper" and loaded[450] == "empty" and loaded[2090] == "copper"
     m.last_rock = rock(12, 2)
     m.learn_rock({}, 0)
     m.learn_rock({}, 0)
     assert m.rock_fails == {12: 2}
+
+
+def test_level_1_never_tries_rocks_above_its_level(monkeypatch, tmp_path):
+    from lumberjack.skills import mining as M
+    monkeypatch.setattr(M, "ROCK_ORES", tmp_path / "rock_ores.json")
+    known = M.load_rock_ores()
+    assert known[2090] == "copper" and known[2092] == "iron" and known[450] == "empty"
+    locs = [{"id": 2092, "ops": ["Mine"], "dist": 1, "name": "Rocks"},       # iron: too high, skipped
+            {"id": 450, "ops": ["Mine"], "dist": 1, "name": "Rocks"},        # depleted
+            {"id": 2090, "ops": ["Mine"], "dist": 4, "name": "Rocks"}]       # copper
+    ranked = M.rank_rocks_gs(locs, known, ["copper", "tin"], guess=lambda l: "copper")
+    assert [r[2]["id"] for r in ranked] == [2090]

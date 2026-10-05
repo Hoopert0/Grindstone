@@ -51,6 +51,7 @@ TASK_TOOLS = {
     "runecrafting": set(),
     "agility": set(),
     "hunter": {"bird_snare", "box_trap"},
+    "farming": {"rake", "seed_dibber", "spade"},
     "smithing": {"hammer"},
     "thieving": {"coins"},
     "combat": {"coins"},

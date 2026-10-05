@@ -29,7 +29,7 @@ final class GameState {
 
     // queries whose client calls change game state (type caches, the interface table, login)
     private static final java.util.Set<String> GAME_THREAD = new java.util.HashSet<>(
-            java.util.Arrays.asList("inv", "ground", "locs", "widgets", "login", "camera"));
+            java.util.Arrays.asList("inv", "ground", "locs", "widgets", "login", "camera", "varbit"));
     private static boolean noHook;
 
     static String handle(String what, String arg) throws Exception {
@@ -68,6 +68,7 @@ final class GameState {
             case "login": return login(arg);
             case "loginstatus": return loginStatus();
             case "varp": return varp(arg);
+            case "varbit": return varbit(arg);
             case "tick": return "{\"loop\":" + statInt("rt4.client", "loop") + ",\"state\":" + statInt("rt4.client", "gameState") + "}";
             default: throw new IllegalArgumentException("unknown state '" + what + "'");
         }
@@ -83,6 +84,21 @@ final class GameState {
             int id = Integer.parseInt(part);
             if (id < 0 || id >= v.length) continue;
             b.append(first ? "" : ",").append('"').append(id).append("\":").append(v[id]);
+            first = false;
+        }
+        return b.append('}').toString();
+    }
+
+    /** Varbits (farming patch states...): arg "780 708" -> {"780":8,"708":3}. Reads the varbit
+     *  table (a cache): runs on the game thread. */
+    private static String varbit(String arg) throws Exception {
+        Method get = cls("rt4.VarpDomain").getMethod("getVarbit", int.class);
+        StringBuilder b = new StringBuilder("{");
+        boolean first = true;
+        for (String part : (arg == null ? "" : arg.trim()).split("\\s+")) {
+            if (part.isEmpty()) continue;
+            int id = Integer.parseInt(part);
+            b.append(first ? "" : ",").append('"').append(id).append("\":").append(get.invoke(null, id));
             first = false;
         }
         return b.append('}').toString();
@@ -363,7 +379,11 @@ final class GameState {
         if (cached != null) return cached == NO_LOC ? null : cached;
         Object type = locType.invoke(null, id);
         boolean multi = type != null && get(type, "multiLocs") != null;
-        if (multi) type = type.getClass().getMethod("getMultiLoc").invoke(type);
+        String varbit = "-1";                    // what a multi-loc's look depends on (farming patches)
+        if (multi) {
+            varbit = String.valueOf(getInt(type, "multiLocVarbit"));
+            type = type.getClass().getMethod("getMultiLoc").invoke(type);
+        }
         String[] info = NO_LOC;
         if (type != null) {
             String name = text(get(type, "name"));
@@ -377,7 +397,8 @@ final class GameState {
                     firstOp = false;
                 }
                 info = new String[]{String.valueOf(getInt(type, "id")), name, o.append(']').toString(),
-                                    String.valueOf(getInt(type, "width")), String.valueOf(getInt(type, "length"))};
+                                    String.valueOf(getInt(type, "width")), String.valueOf(getInt(type, "length")),
+                                    varbit};
             }
         }
         if (!multi && LOC_INFO.size() < 20000) LOC_INFO.put(id, info);
@@ -436,6 +457,7 @@ final class GameState {
                             "{\"id\":" + info[0] + ",\"name\":" + q(name) + ",\"ops\":" + o
                             + ",\"tile\":[" + (tx + ox) + "," + (ty + oy) + "],\"dist\":" + dist
                             + ",\"size\":[" + info[3] + "," + info[4] + "]"
+                            + (info.length > 5 && !"-1".equals(info[5]) ? ",\"varbit\":" + info[5] : "")
                             + ",\"screen\":[" + ground[0] + "," + ground[1] + "]"
                             + ",\"body\":[" + body[0] + "," + body[1] + "]}"});
                     } catch (Exception e) {

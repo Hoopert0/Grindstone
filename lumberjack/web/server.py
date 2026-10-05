@@ -168,12 +168,14 @@ RESUME_WAIT_S = 1800                  # after a panel restart, wait this long fo
 # the skills Grindstone can train (autopilot's progress counts these)
 TRAINED_SKILLS = ["attack", "strength", "defence", "hitpoints", "ranged", "prayer", "magic", "cooking",
                   "woodcutting", "fletching", "fishing", "firemaking", "crafting", "smithing", "mining", "herblore",
-                  "runecrafting", "agility", "hunter", "slayer", "thieving"]
+                  "runecrafting", "agility", "hunter", "slayer", "farming",
+                  "thieving"]
 TASK_LEVEL_SKILLS = {"woodcutting": ["woodcutting"], "firemaking": ["firemaking"], "fishing": ["fishing"],
                      "mining": ["mining"], "combat": ["attack", "strength", "defence"], "cooking": ["cooking"],
                      "prayer": ["prayer"], "fletching": ["fletching"], "crafting": ["crafting"],
                      "herblore": ["herblore"], "runecrafting": ["runecrafting"], "agility": ["agility"],
-                     "hunter": ["hunter"], "slayer": ["slayer"], "thieving": ["thieving"], "smithing": ["smithing"], "ranged": ["ranged"],
+                     "hunter": ["hunter"], "slayer": ["slayer"],
+                     "farming": ["farming"], "thieving": ["thieving"], "smithing": ["smithing"], "ranged": ["ranged"],
                      "magic": ["magic"]}
 # tasks that spawn their own supplies: need game data + 'Spawn missing tools'
 SPAWN_TASKS = {"cooking": "raw fish", "prayer": "bones", "fletching": "logs and a knife",
@@ -183,7 +185,7 @@ STEP_RETRIES = 3                      # attempts per step before moving on
 CHECK_MINUTES = 2                     # skill check: each task this long
 CHECK_TASKS = ["woodcutting", "fishing", "mining", "combat", "ranged", "magic", "thieving", "slayer",
                "agility", "hunter", "firemaking", "cooking", "prayer", "fletching", "crafting", "smithing",
-               "herblore", "runecrafting"]
+               "herblore", "runecrafting", "farming"]
 STALL_LIMIT_S = 360                   # a step with no progress/XP this long is restarted
 RESET_AFTER_S = 600                   # a run that lasted this long counts as having gone well
 TIDY_SPARE = 4                        # this many items the next task doesn't use -> worth a bank trip
@@ -432,6 +434,12 @@ def preflight(s: "Settings"):
             errors.append("Agility needs the game's own data (it finds the obstacles in the scene).")
         fixes.append("Teleports to the Gnome Stronghold course (the Barbarian Outpost course from 35) and runs "
                      "laps; back to the start when it gets lost or falls, back where you were at the end.")
+    elif s.task == "farming":
+        if not (_names_from_game() and s.spawn_tools):
+            errors.append("Farming needs the game's own data and 'Spawn missing tools' (seeds and tools).")
+        fixes.append("Teleports to the Falador farm: rakes, adds supercompost, plants the best seeds for your level "
+                     "in both allotments (and the herb patch from 9), grows them with ::grow, cures or clears sick "
+                     "crops, harvests, drops the harvest; back where you were at the end.")
     elif s.task == "hunter":
         if not (_names_from_game() and s.spawn_tools):
             errors.append("Hunter needs the game's own data and 'Spawn missing tools' (it spawns its traps).")
@@ -651,6 +659,9 @@ def task_problem(s: Settings):
     if s.task == "slayer":
         return None if s.spawn_tools and _names_from_game() else \
             "Slayer needs the game's own data and 'Spawn missing tools'"
+    if s.task == "farming":
+        return None if s.spawn_tools and _names_from_game() else \
+            "Farming needs the game's own data and 'Spawn missing tools'"
     if s.task == "hunter":
         return None if s.spawn_tools and _names_from_game() else \
             "Hunter needs the game's own data and 'Spawn missing tools' (it spawns its traps)"
@@ -689,7 +700,7 @@ TASK_SKILLS = {
     "cooking": ["cooking", "firemaking"], "prayer": ["prayer"], "fletching": ["fletching"],
     "crafting": ["crafting"], "thieving": ["thieving", "hitpoints"], "smithing": ["smithing"],
     "herblore": ["herblore"], "runecrafting": ["runecrafting"], "agility": ["agility"], "hunter": ["hunter"],
-    "slayer": ["slayer", "attack", "strength", "defence", "hitpoints"],
+    "slayer": ["slayer", "attack", "strength", "defence", "hitpoints"], "farming": ["farming"],
     "ranged": ["ranged", "hitpoints"], "magic": ["magic"],
 }
 
@@ -802,6 +813,9 @@ class BotController:
                          spawn_tools=s.spawn_tools, drop_at=s.drop_at, mine_spot=s.mine_spot,
                          bank_spot=s.bank_spot, max_logs=s.max_logs, map_name=s.map or None,
                          keep_carried=s.keep_carried, **common)
+        if s.task == "farming":
+            from lumberjack.skills.farming_task import Farmer
+            return Farmer(**common)
         if s.task == "hunter":
             from lumberjack.skills.hunter_task import Hunter
             return Hunter(**common)

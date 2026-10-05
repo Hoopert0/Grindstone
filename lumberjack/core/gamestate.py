@@ -191,6 +191,10 @@ class GameState:
         enc = lambda t: base64.b64encode(t.encode("utf-8")).decode("ascii")
         return self._q(f"login {enc(user)} {enc(password)}")
 
+    def varbits(self, *ids):
+        """Varbits (farming patch states...): {id: value}."""
+        return {int(k): v for k, v in self._q("varbit " + " ".join(str(i) for i in ids)).items()}
+
     def varps(self, *ids):
         """Server-set varps (quest progress...): {id: value}."""
         return {int(k): v for k, v in self._q("varp " + " ".join(str(i) for i in ids)).items()}

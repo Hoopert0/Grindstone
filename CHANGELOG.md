@@ -2,7 +2,7 @@
 
 ## More skills, longer routes
 
-- New skills: Herblore, Runecrafting, Agility, Hunter and Slayer - Autopilot trains them too
+- New skills: Herblore, Runecrafting, Agility, Hunter, Slayer and Farming - Autopilot trains them too
 - Tools › Skill check: every skill for 2 minutes, then a report of what earned XP
 - Autopilot runs until you press Stop (only Controls' *Stop after* limits it); the panel says why
   a plan or Autopilot as a whole ended

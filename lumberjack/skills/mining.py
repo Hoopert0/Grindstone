@@ -64,10 +64,14 @@ ROCK_ORES = Path(__file__).resolve().parents[1] / "assets" / "templates" / "rock
 
 # ---- which rock (loc id) holds which ore: learned while mining, synced with the templates ---
 def load_rock_ores():
+    """{rock object id: ore} - the server's table (rock_data) over anything learned by trying,
+    depleted rocks as "empty"."""
+    from lumberjack.skills.rock_data import EMPTY_ROCKS, ROCK_ORES as KNOWN
     try:
-        return {int(k): v for k, v in json.loads(ROCK_ORES.read_text()).items()}
+        learned = {int(k): v for k, v in json.loads(ROCK_ORES.read_text()).items()}
     except (OSError, ValueError):
-        return {}
+        learned = {}
+    return {**learned, **{i: "empty" for i in EMPTY_ROCKS}, **KNOWN}
 
 
 def save_rock_ores(mapping):

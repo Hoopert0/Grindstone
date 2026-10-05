@@ -78,6 +78,14 @@ as well as combat XP. Gear, food and eating as Combat.
 Route: chickens (1) → cows (5) → goblins (10) → hill giants (25) → ice warriors (40) → ankou (55)
 → fire giants (70).
 
+### 🌱 Farming · spawns
+Teleports to the Falador farm and works both allotments (and the herb patch from level 9): rakes
+the weeds, adds supercompost, plants the best seeds for your level, grows them with the admin
+`::grow` command, cures diseased crops, digs up dead ones, harvests and drops the harvest. Each
+patch's state is read from the game. Allotments: potatoes (1) → onions (5) → cabbages (7) →
+tomatoes (12) → sweetcorn (20) → strawberries (31) → watermelons (47). Herbs: guam (9) → … →
+torstol (85).
+
 ### 🏃 Agility
 Teleports to the Gnome Stronghold course (1), or the Barbarian Outpost course from 35, and runs
 laps: each obstacle is found by its id in the scene, and when it gets lost, stuck or falls it
