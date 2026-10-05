@@ -26,7 +26,7 @@ SERVER_JAVA = JAVA.with_name("java.exe")  # same JRE and memory settings the lau
 PANEL_PORT = 8765
 LOGS = savesync.REPO / "logs"
 NO_WINDOW = 0x08000000  # CREATE_NO_WINDOW
-DETACHED = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+DETACHED = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
 
 
 def java_processes():
@@ -61,9 +61,26 @@ def wait_for(check, seconds, what):
     raise RuntimeError(f"{what} didn't come up within {seconds} s.")
 
 
-def start_server():
+SERVER_NEEDS = ["worldprops/default.conf"]     # a half-extracted singleplayer update lacks these
+
+
+def install_problem():
+    """What's missing from the singleplayer install (a launcher update that didn't finish), or None."""
     if not SERVER_JAR.exists():
-        raise RuntimeError(f"Server not found at {SERVER_JAR}. Install 2009scape and start Singleplayer once from its launcher.")
+        return (f"Server not found at {SERVER_JAR}. Install 2009scape and start Singleplayer once from "
+                "its launcher.")
+    missing = [p for p in SERVER_NEEDS if not (SERVER_DIR / p).exists()]
+    if missing:
+        return ("The singleplayer install is incomplete (missing " + ", ".join(missing) + ") - an update "
+                "probably stopped half-way. Close everything, run the singleplayer update in the 2009scape "
+                "launcher again (back up singleplayer\\game\\data\\players first), then start Grindstone.")
+    return None
+
+
+def start_server():
+    problem = install_problem()
+    if problem:
+        raise RuntimeError(problem)
     LOGS.mkdir(exist_ok=True)
     log = open(LOGS / "server.log", "w")
     p = subprocess.Popen([str(SERVER_JAVA), "-Xmx2G", "-Xms2G", "-jar", str(SERVER_JAR)],
