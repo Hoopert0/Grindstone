@@ -168,7 +168,7 @@ class Hunter(BotBase):
         if not actions.use_slot(self.ctx, self.gs, slots[0], "Lay"):
             return
         self.sleep(random.uniform(2.6, 3.2))
-        if self.gs.player()["tile"] != before:     # the game steps us off a laid trap
+        if self.trap_went_down(iid, len(slots), out, before):
             self.laid += 1
             self.lay_fails = 0
             return
@@ -176,6 +176,17 @@ class Hunter(BotBase):
         if self.lay_fails >= 6:
             raise StopBot("no tile here takes a trap")
         self.step_aside(before)
+
+    def trap_went_down(self, iid, carried, out, before):
+        """Did the trap get laid? One fewer in the backpack, one more of ours on the ground, or
+        the game stepping us off it (it doesn't always: the step needs a free tile beside it)."""
+        from lumberjack.core import backpack
+        inv = backpack.slots() or []
+        if inv and sum(1 for s in inv if s["id"] == iid) < carried:
+            return True
+        if sum(len(t) for t in self.traps()) > out:
+            return True
+        return self.gs.player()["tile"] != before
 
     def step_aside(self, tile):
         from lumberjack.core import interact

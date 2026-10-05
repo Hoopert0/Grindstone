@@ -138,3 +138,20 @@ def test_teleport_failure_stops(field, monkeypatch):
     monkeypatch.setattr(places, "teleport", lambda ctx, gs, tile, plane=0: False)
     with pytest.raises(StopBot, match="teleport"):
         hunter(field).go_to_spot()
+
+
+def test_a_laid_trap_counts_even_when_the_game_doesnt_step_us_off(field, monkeypatch):
+    """The server only steps us off when a tile beside is free: the snare leaving the backpack
+    (and a trap showing up) is what says it went down - "no tile here takes a trap" otherwise."""
+    h = hunter(field)
+    h.go_to_spot()
+    h.tick()                                              # spawn a snare
+
+    def lay_in_place(ctx, gs, i, verb):
+        field.inv[i] = {"id": -1, "key": None}
+        field.traps.append([19175, list(field.tile), "Bird snare", ["Dismantle"]])
+        return True
+    monkeypatch.setattr(actions, "use_slot", lay_in_place)
+    before = list(field.tile)
+    h.tick()
+    assert h.laid == 1 and h.lay_fails == 0 and field.tile == before

@@ -135,3 +135,42 @@ def test_course_areas_never_overlap_and_landings_lead_on():
     assert A.next_obstacle(bar, (2545, 3542), 0) == (None, None)       # fell in the water: lost
     assert A.next_obstacle(bar, (2549, 9951), 0) == (None, None)       # the pit: lost
     assert A.best_course(34) is A.GNOME and A.best_course(35) is A.BARBARIAN
+
+
+def test_obstacle_not_in_sight_yet_is_no_try(course, monkeypatch):
+    """Right after the teleport the scene can still be loading: looks that see nothing don't count
+    as clicks that failed (that sent us back to the start every ~4 s)."""
+    a = runner(course, monkeypatch, laps=1)
+    course.tile = (2474, 3437)
+    real = course.locs
+    looks = {"n": 0}
+
+    def slow(radius=15, name=None):
+        looks["n"] += 1
+        return [] if looks["n"] <= 3 else real(radius, name)
+    course.locs = slow
+    teleports = []
+    monkeypatch.setattr(places, "teleport", lambda ctx, gs, tile, plane=0: teleports.append(tile) or True)
+    with pytest.raises(StopBot, match="enough"):
+        a.loop()
+    assert teleports == [] and a.laps == 1
+
+
+def test_other_id_with_the_option_is_used(course, monkeypatch):
+    """This cache numbers the log balance differently: anything here offering Walk-across will do."""
+    a = runner(course, monkeypatch)
+    course.locs = lambda radius=15, name=None: [
+        {"id": 9999, "name": "Log balance", "ops": ["Walk-across"], "tile": [2474, 3435], "dist": 2},
+        {"id": 1, "name": "Tree", "ops": ["Chop down"], "tile": [2470, 3437], "dist": 4}]
+    found = a.find(A.GNOME["obstacles"][0], 0)
+    assert [l["id"] for l in found] == [9999]
+
+
+def test_never_seeing_the_obstacle_logs_and_goes_back(course, monkeypatch, caplog):
+    a = runner(course, monkeypatch)
+    course.tile = (2474, 3437)
+    course.locs = lambda radius=15, name=None: [{"id": 1, "name": "Tree", "ops": ["Chop down"], "tile": [1, 1]}]
+    monkeypatch.setattr(places, "teleport", lambda ctx, gs, tile, plane=0: True)
+    with caplog.at_level("INFO"), pytest.raises(StopBot, match="lost"):
+        a.loop()
+    assert "Tree #1" in caplog.text and "can't see the next obstacle" in caplog.text.lower()

@@ -401,14 +401,19 @@ def clear_materials(ctx, food=True, log=None):
     so a run starts with room. Tools and anything not known as a product stay: each slot is
     checked before it's dropped (by name with game data, else by its hover text). Returns how
     many slots were dropped, or None when that couldn't be counted (no game data)."""
-    from lumberjack.core import backpack
+    from lumberjack.core import backpack, gamestate
     inv = backpack.slots()
     if inv is not None:
-        n = sum(1 for s in inv if s["id"] >= 0 and backpack.is_product(s["key"], food=food))
+        mats = [i for i, s in enumerate(inv) if s["id"] >= 0 and backpack.is_product(s["key"], food=food)]
+        n = len(mats)
         if not n:
             return 0
         if log:
             log.info("Dropping %d material(s) before starting", n)
+        gs = gamestate.shared()
+        if gs is not None:            # known by name: drop exactly those (the hover check was for
+            drop_known(ctx, gs, mats)  # no game data, and kept every slot it couldn't read)
+            return n
     elif log:
         log.info("Dropping materials before starting")
     drop_all(ctx, keep=(), food=food)

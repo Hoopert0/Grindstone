@@ -16,6 +16,8 @@ LAND_S = 20.0              # an obstacle takes up to ~10 s (the pipe); wait for 
 TRIES = 4                  # clicks on one obstacle that never moved us -> back to the start
 STILL_BEFORE_S = 8.0       # still before the obstacle this long after a click -> click again
 LOST_LIMIT = 6             # teleports to the start in a row without progress -> stop
+MISS_LIMIT = 8             # looks (~1 s apart) that never saw the obstacle -> back to the start
+SETTLE_S = 2.0             # after a teleport: let the scene load before looking for obstacles
 
 
 def box(x0, y0, x1, y1, plane):
@@ -122,18 +124,21 @@ class Agility(BotBase):
 
     def loop(self):
         course, obstacles = self.course, self.course["obstacles"]
-        lost = tries = 0
+        lost = tries = misses = 0
         last = None
         while True:
             self.check_stop()
             me = self.gs.player()
             i, o = next_obstacle(course, me["tile"], me.get("plane", 0))
-            if o is None or tries >= TRIES:
+            if o is None or tries >= TRIES or misses >= MISS_LIMIT:
                 lost += 1
                 if lost > LOST_LIMIT:
                     raise StopBot(f"keeps getting lost on the {course['name']}")
-                self.to_start("stuck on an obstacle" if o is not None else "off the course")
-                tries, last = 0, None
+                why = ("off the course" if o is None else "stuck on an obstacle" if tries >= TRIES
+                       else "can't see the next obstacle")
+                self.to_start(why)
+                tries = misses = 0
+                last = None
                 continue
             if i != last:
                 if last is not None:                # moved on: the last obstacle is done
@@ -144,24 +149,55 @@ class Agility(BotBase):
                         self.log.info("Lap %d done", self.laps)
                 last, tries = i, 0
             self.state = f"{o['op'].lower()} ({i + 1}/{len(obstacles)})"
-            tries += 1
-            self.do(o, me)
+            done = self.do(o, me)
+            if done == "miss":                      # not in sight (yet): that's no try on it
+                misses += 1
+                if misses == MISS_LIMIT // 2:
+                    self.log_nearby(o)
+            else:
+                misses = 0
+                tries += 1
+
+    def find(self, o, plane):
+        """The obstacle's locs: by id/name first, else anything here offering its option."""
+        locs = self.gs.locs(OBSTACLE_RADIUS)
+
+        def has_op(l):
+            return o["op"].lower() in [op.lower() for op in (l.get("ops") or [])]
+
+        def placed(l):
+            return o.get("at") is None or inside(o["at"], l["tile"], plane)
+        found = [l for l in locs
+                 if (l.get("id") in o.get("ids", ()) or l["name"] in o.get("names", ()))
+                 and (has_op(l) or not l.get("ops")) and placed(l)]
+        if found:
+            return found
+        # a different id in this cache: the option is what counts (nearest first)
+        return sorted((l for l in locs if has_op(l) and placed(l)), key=lambda l: l.get("dist", 0))
+
+    def log_nearby(self, o):
+        try:
+            locs = self.gs.locs(OBSTACLE_RADIUS)
+        except Exception:
+            return
+        seen = sorted({(l["name"], l.get("id"), "/".join(l.get("ops") or [])) for l in locs if l.get("ops")})
+        self.log.info("Can't see the obstacle to %s (ids %s). Nearby: %s", o["op"],
+                      sorted(o.get("ids", ())) or sorted(o.get("names", ())),
+                      "; ".join(f"{n} #{i} [{ops}]" for n, i, ops in seen[:15]) or "nothing")
 
     def do(self, o, me):
-        """Click obstacle `o` and wait until we've landed somewhere else (or time's up)."""
+        """Click obstacle `o` and wait until we've landed somewhere else (or time's up).
+        "miss" when it isn't in sight, "noclick" when the click didn't land, else "done"."""
         from lumberjack.core import interact
         plane = me.get("plane", 0)
-        found = [l for l in self.gs.locs(OBSTACLE_RADIUS)
-                 if (l.get("id") in o.get("ids", ()) or l["name"] in o.get("names", ()))
-                 and o["op"].lower() in [op.lower() for op in (l.get("ops") or [o["op"]])]
-                 and (o.get("at") is None or inside(o["at"], l["tile"], plane))]
+        found = self.find(o, plane)
         if not found:
             self.sleep(1.0)
-            return
+            return "miss"
         loc = found[0]
         if not interact.use_option(self.ctx, self.gs, interact.points_for(loc), o["op"], loc["name"]):
             interact.walk_to_tile(self.ctx, self.gs, loc["tile"], arrive=2)   # off screen: get closer
-            return
+            return "noclick"
         t0, still = time.monotonic(), None
         while time.monotonic() - t0 < LAND_S:
             self.sleep(0.6)
@@ -169,12 +205,13 @@ class Agility(BotBase):
             here = (tuple(now["tile"]), now.get("plane", 0))
             if inside(o["area"], now["tile"], here[1]):
                 if time.monotonic() - t0 > STILL_BEFORE_S:      # never got going: click again
-                    return
+                    return "done"
                 continue
             if still is None or here != still[0]:
                 still = (here, time.monotonic())
             elif time.monotonic() - still[1] > 1.2:             # landed and stopped moving
-                return
+                return "done"
+        return "done"
 
     def to_start(self, why):
         from lumberjack.nav import places
@@ -183,6 +220,7 @@ class Agility(BotBase):
         self.log.info("%s - teleporting to the start of the %s", why.capitalize(), self.course["name"])
         if not places.teleport(self.ctx, self.gs, (x, y), plane):
             raise StopBot(f"couldn't teleport to the {self.course['name']}")
+        self.sleep(SETTLE_S)                         # the scene's objects load after we land
 
     def leave(self):
         """Stay put: a run also ends before every retry, and teleporting back to where it started

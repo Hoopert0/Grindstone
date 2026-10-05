@@ -5,6 +5,8 @@ import sys
 import threading
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from lumberjack.core import backpack as B  # noqa: E402
@@ -200,3 +202,20 @@ def test_clear_materials_drops_products_keeps_tools(monkeypatch):
     monkeypatch.setattr(backpack, "slots", lambda: [{"id": 1, "key": "bronze_axe"}] + [{"id": -1, "key": None}] * 27)
     dropped.clear()
     assert actions.clear_materials(ctx) == 0 and dropped == []
+
+
+def test_clear_materials_with_game_data_drops_by_name(monkeypatch):
+    """With game data the slots are known by name: drop exactly those (the hover check said
+    "Not dropping slot N - it isn't a product" for everything it couldn't read)."""
+    import types
+    from lumberjack import actions
+    from lumberjack.core import backpack, gamestate
+    names = ["bronze_axe", "logs", "raw_shrimps", "bones"] + [None] * 24
+    monkeypatch.setattr(backpack, "slots", lambda: [{"id": 1 if n else -1, "key": n} for n in names])
+    gs = object()
+    monkeypatch.setattr(gamestate, "shared", lambda: gs)
+    got = []
+    monkeypatch.setattr(actions, "drop_known", lambda ctx, g, slots: got.append((g, list(slots))) or len(slots))
+    monkeypatch.setattr(actions, "drop_all", lambda *a, **k: pytest.fail("generic drop with game data"))
+    assert actions.clear_materials(types.SimpleNamespace(), food=True) == 3
+    assert got == [(gs, [1, 2, 3])]
