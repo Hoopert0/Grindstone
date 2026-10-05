@@ -1,8 +1,9 @@
 """Training routes: where (and on what) to train each skill at each level, so a plan step with
 place "auto" moves on by itself - normal trees -> oaks -> willows, shrimps -> trout -> lobsters...
 
-STARTER_PLACES are built in (marked ★) and show up with the saved places. Their tiles are
-approximate - the bots search ~15-18 tiles around them. If one is off, stand at the right spot
+STARTER_PLACES are built in (marked ★) and show up with the saved places. NPC places sit on a
+cluster of spawns from the 2009scape server's npc_spawns.json - the bots search ~15-18 tiles
+around them. If one is off, stand at the right spot
 and save a place under the SAME name: a saved place always wins over the built-in one.
 
 pick(task, level) -> (place name, settings overrides) for the highest tier the level allows.
@@ -12,17 +13,28 @@ STARTER_PLACES = {
     "★ Draynor willows": {"tile": [3087, 3235], "plane": 0, "note": "willows south of the bank"},
     "★ Draynor fishing": {"tile": [3086, 3228], "plane": 0, "note": "net / bait"},
     "★ Lumbridge river": {"tile": [3239, 3244], "plane": 0, "note": "lure / bait"},
-    "★ Catherby fishing": {"tile": [2837, 3432], "plane": 0, "note": "cage / harpoon, bank close by"},
+    "★ Catherby fishing": {"tile": [2850, 3432], "plane": 0, "note": "cage / harpoon, bank close by"},
     "★ Varrock east mine": {"tile": [3286, 3366], "plane": 0, "note": "copper, tin, iron"},
     "★ Barbarian mine": {"tile": [3081, 3421], "plane": 0, "note": "coal, tin"},
     "★ Lumbridge chickens": {"tile": [3233, 3295], "plane": 0},
     "★ Lumbridge cows": {"tile": [3258, 3276], "plane": 0},
     "★ Lumbridge goblins": {"tile": [3250, 3238], "plane": 0},
     "★ Al Kharid warriors": {"tile": [3293, 3173], "plane": 0, "note": "the palace"},
-    "★ Lumbridge men": {"tile": [3222, 3240], "plane": 0, "note": "men & women around Lumbridge"},
+    "★ Lumbridge men": {"tile": [3232, 3210], "plane": 0, "note": "men & women by the houses south of the castle"},
     "★ Varrock guards": {"tile": [3212, 3462], "plane": 0, "note": "palace courtyard"},
     "★ Ardougne knights": {"tile": [2662, 3306], "plane": 0, "note": "the market"},
+    "★ Ardougne paladins": {"tile": [2577, 3298], "plane": 0, "note": "the castle courtyard"},
+    "★ Ardougne market heroes": {"tile": [2655, 3310], "plane": 0, "note": "heroes + paladins round the market"},
+    "★ Edgeville hill giants": {"tile": [3109, 9835], "plane": 0, "note": "Edgeville dungeon (aggressive)"},
+    "★ Ice warriors": {"tile": [3052, 9582], "plane": 0, "note": "Asgarnian ice dungeon (aggressive)"},
+    "★ Stronghold ankou": {"tile": [2320, 5232], "plane": 0, "note": "Stronghold of Security, 3rd floor"},
+    "★ Fire giants": {"tile": [2578, 9898], "plane": 0, "note": "Waterfall dungeon (aggressive)"},
     "★ Varrock anvil": {"tile": [3188, 3425], "plane": 0, "note": "anvils south of the west bank"},
+    # from memory of the map, not the server's data: a run that finds nothing checks the place
+    # in the game and moves it to the trees/rocks within 40 tiles
+    "★ Seers' maples": {"tile": [2730, 3500], "plane": 0, "note": "maples north of Seers' bank"},
+    "★ Edgeville yews": {"tile": [3087, 3474], "plane": 0, "note": "yews south-west of Edgeville"},
+    "★ Mining guild": {"tile": [3046, 9744], "plane": 0, "note": "coal + mithril (underground)"},
 }
 
 # task -> [(min level, place, Settings overrides)], lowest first
@@ -31,28 +43,40 @@ ROUTES = {
         (1, "★ Lumbridge trees", {"trees": ["tree"], "auto_trees": False}),
         (15, "★ Lumbridge trees", {"trees": ["oak", "tree"], "auto_trees": False}),
         (30, "★ Draynor willows", {"trees": ["willow"], "auto_trees": False}),
+        (45, "★ Seers' maples", {"trees": ["maple"], "auto_trees": False}),
+        (60, "★ Edgeville yews", {"trees": ["yew"], "auto_trees": False}),
     ],
     "fishing": [
         (1, "★ Draynor fishing", {"fish_method": "net", "auto_fish": False}),
         (20, "★ Lumbridge river", {"fish_method": "lure", "auto_fish": False}),
         (40, "★ Catherby fishing", {"fish_method": "cage", "auto_fish": False}),
+        (50, "★ Catherby fishing", {"fish_method": "harpoon", "auto_fish": False}),   # swordfish; sharks at 76
     ],
     "mining": [
         (1, "★ Varrock east mine", {"ores": ["copper", "tin"], "auto_ores": False}),
         (15, "★ Varrock east mine", {"ores": ["iron"], "auto_ores": False}),
         (30, "★ Barbarian mine", {"ores": ["coal"], "auto_ores": False}),
+        (55, "★ Mining guild", {"ores": ["mithril", "coal"], "auto_ores": False}),
     ],
     "combat": [
         (1, "★ Lumbridge chickens", {"targets": ["chicken"]}),
         (5, "★ Lumbridge cows", {"targets": ["cow"]}),
         (10, "★ Lumbridge goblins", {"targets": ["goblin"]}),
         (20, "★ Al Kharid warriors", {"targets": ["al-kharid_warrior", "al_kharid_warrior"]}),
+        (30, "★ Edgeville hill giants", {"targets": ["hill_giant"]}),
+        (45, "★ Ice warriors", {"targets": ["ice_warrior"]}),
+        (60, "★ Stronghold ankou", {"targets": ["ankou"]}),
+        (75, "★ Fire giants", {"targets": ["fire_giant"]}),
     ],
     "ranged": [
         (1, "★ Lumbridge chickens", {"targets": ["chicken"]}),
         (5, "★ Lumbridge cows", {"targets": ["cow"]}),
         (10, "★ Lumbridge goblins", {"targets": ["goblin"]}),
         (20, "★ Al Kharid warriors", {"targets": ["al-kharid_warrior", "al_kharid_warrior"]}),
+        (30, "★ Edgeville hill giants", {"targets": ["hill_giant"]}),
+        (45, "★ Ice warriors", {"targets": ["ice_warrior"]}),
+        (60, "★ Stronghold ankou", {"targets": ["ankou"]}),
+        (75, "★ Fire giants", {"targets": ["fire_giant"]}),
     ],
     "smithing": [
         (1, "★ Varrock anvil", {}),
@@ -66,6 +90,8 @@ ROUTES = {
         (25, "★ Al Kharid warriors", {"thieve": ["al-kharid_warrior", "al_kharid_warrior"]}),
         (40, "★ Varrock guards", {"thieve": ["guard"]}),
         (55, "★ Ardougne knights", {"thieve": ["knight_of_ardougne"]}),
+        (70, "★ Ardougne paladins", {"thieve": ["paladin"]}),
+        (80, "★ Ardougne market heroes", {"thieve": ["hero", "paladin"]}),
     ],
 }
 AUTO = "auto"           # a plan step's place: pick it from the route by level

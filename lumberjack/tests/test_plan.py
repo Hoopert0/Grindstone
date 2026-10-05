@@ -304,7 +304,8 @@ def test_training_route_pick():
     from lumberjack.nav import training
     assert training.pick("woodcutting", 1)[1]["trees"] == ["tree"]
     assert training.pick("woodcutting", 29)[1]["trees"] == ["oak", "tree"]
-    assert training.pick("woodcutting", 45) == ("★ Draynor willows", {"trees": ["willow"], "auto_trees": False})
+    assert training.pick("woodcutting", 44) == ("★ Draynor willows", {"trees": ["willow"], "auto_trees": False})
+    assert training.pick("woodcutting", 70)[0] == "★ Edgeville yews"
     assert training.pick("fishing", None)[0] == "★ Draynor fishing"
     assert training.pick("firemaking", 50) == (None, {})
     for task, tiers in training.ROUTES.items():          # every route's place exists, tiers ascend
@@ -468,7 +469,7 @@ def test_autopilot_runs_its_picks(monkeypatch):
     ctl._run_plan(server.Plan(autopilot=True, target=99))
     assert steps[0] == ("combat", 10, "auto") and steps[1] == ("prayer", 43, None)
     assert seen_opts[0]["when_full"] == "drop" and seen_opts[0]["loot"] == []
-    assert steps[2][0] == "magic" and ctl.plan_info is None
+    assert steps[2][0] == "herblore" and ctl.plan_info is None
 
 
 def test_login_settings_keep_the_password(monkeypatch, tmp_path):
@@ -525,3 +526,40 @@ def test_auto_login_logs_in_at_the_login_screen(monkeypatch, tmp_path):
 
 class Stop(Exception):
     pass
+
+
+def test_failed_run_at_a_route_place_rechecks_it_once(monkeypatch):
+    ctl, built = runner(monkeypatch, ["no fishing spot found", "no fishing spot found", "reached level 20 in fishing"])
+    from lumberjack.nav import places, training
+    saved = {"★ Draynor fishing": {"tile": [3086, 3228], "plane": 0}}
+    monkeypatch.setattr(places, "load", lambda: saved)
+    travelled, checks = [], []
+    monkeypatch.setattr(places, "travel", lambda ctx, gs, place, use_tele=True: travelled.append(place["tile"]) or True)
+
+    def check(ctx, gs, name, tiers, fix=True, log=None):
+        checks.append(name)
+        saved[name] = {"tile": [3090, 3232], "plane": 0}          # the check moved the place
+        return {"status": "moved"}
+    monkeypatch.setattr(training, "check_place", check)
+    import logging
+    ctl._run_step(server.PlanStep(task="fishing", minutes=30, level=20, place="★ Draynor fishing"),
+                  server.Plan(), logging.getLogger("t"))
+    assert checks == ["★ Draynor fishing"]                         # once per step, not every failure
+    assert travelled == [[3086, 3228], [3090, 3232], [3090, 3232]]
+
+
+def test_every_task_builds_its_bot(monkeypatch):
+    """Each task the panel offers turns into a bot (constructor arguments line up)."""
+    import sys
+    from lumberjack.skills import base, woodcutting  # noqa: F401 - loaded so they get the fakes
+    for name, mod in list(sys.modules.items()):
+        if name.startswith("lumberjack.skills.") and hasattr(mod, "GameWindow"):
+            monkeypatch.setattr(mod, "GameWindow", lambda *a, **k: None)
+            monkeypatch.setattr(mod, "AgentInput", lambda *a, **k: types.SimpleNamespace(close=lambda: None))
+    ctl = server.BotController()
+    names = {}
+    for task in list(server.TASK_LEVEL_SKILLS) + ["woodcutting"]:
+        bot = ctl.build_bot(server.Settings(task=task, map=None))
+        names[task] = getattr(bot, "name", "woodcutting")
+    for task in ("herblore", "runecrafting", "agility", "hunter", "fishing", "thieving"):
+        assert names[task] == task

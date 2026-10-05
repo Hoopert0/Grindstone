@@ -31,10 +31,11 @@ LOOT = {"bones", "big_bones", "burnt_bones", "wolf_bones", "bat_bones", "cowhide
         "grimy_guam", "grimy_marrentill", "grimy_tarromin", "grimy_harralander", "grimy_ranarr",
         "seaweed", "egg", "bucket", "eye_of_newt", "beer", "air_talisman", "earth_talisman"}
 
-# a new account's starter kit that no task uses (each task spawns its own gear): dropped between
-# tasks when there's no bank, so a fresh account has room for food and supplies
+# a new account's starter kit that no task uses (each task spawns its own gear), and spawned kit
+# only one task uses (hunter traps): dropped between tasks when there's no bank, so a fresh
+# account has room for food and supplies
 STARTER = {"pot", "bronze_dagger", "bronze_sword", "wooden_shield", "shortbow", "bronze_arrow",
-           "bronze_arrows", "bucket", "empty_pot"}
+           "bronze_arrows", "bucket", "empty_pot", "bird_snare", "box_trap"}
 
 # the tools each task uses (axe/pickaxe matched by name); everything else can be banked between tasks
 TASK_TOOLS = {
@@ -46,6 +47,10 @@ TASK_TOOLS = {
     "cooking": {"tinderbox"},
     "fletching": {"knife"},
     "crafting": {"chisel"},
+    "herblore": set(),
+    "runecrafting": set(),
+    "agility": set(),
+    "hunter": {"bird_snare", "box_trap"},
     "smithing": {"hammer"},
     "thieving": {"coins"},
     "combat": {"coins"},

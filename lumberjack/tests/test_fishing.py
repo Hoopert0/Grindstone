@@ -189,5 +189,16 @@ def test_spot_memory_remembers_and_finds_nearest(tmp_path, monkeypatch):
     assert M.nearest("Lure", (3112, 3268))[0] == (3110, 3270)
     M._cache = None                                                            # reloads from the file
     assert M.nearest("Net", (3100, 3245))[0] == (3100, 3250)
-    assert M.nearest("Cage", (2830, 3420)) == ((2837, 3432), "★ Catherby fishing")   # built-in fallback
+    assert M.nearest("Cage", (2830, 3420)) == ((2850, 3432), "★ Catherby fishing")   # built-in fallback
     assert M.nearest("Harpoon", (3200, 3200)) == (None, None)                  # nothing within 80
+
+
+def test_harpoon_picks_the_right_spot_for_the_level():
+    from lumberjack.skills.fishing import harpoon_spots
+    sword = {"ops": ["Cage", "Harpoon"]}
+    shark = {"ops": ["Net", "Harpoon"]}
+    assert harpoon_spots([shark, sword], "harpoon", 60) == [sword]
+    assert harpoon_spots([shark], "harpoon", 60) == []              # walk on to a cage/harpoon spot
+    assert harpoon_spots([sword, shark], "harpoon", 80) == [shark]
+    assert harpoon_spots([sword], "harpoon", 80) == [sword]
+    assert harpoon_spots([shark, sword], "cage", 60) == [shark, sword]

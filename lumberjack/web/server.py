@@ -166,15 +166,18 @@ RESUME_WAIT_S = 1800                  # after a panel restart, wait this long fo
 # the skill(s) a plan step's "until level" refers to
 # the skills Grindstone can train (autopilot's progress counts these)
 TRAINED_SKILLS = ["attack", "strength", "defence", "hitpoints", "ranged", "prayer", "magic", "cooking",
-                  "woodcutting", "fletching", "fishing", "firemaking", "crafting", "smithing", "mining", "thieving"]
+                  "woodcutting", "fletching", "fishing", "firemaking", "crafting", "smithing", "mining", "herblore",
+                  "runecrafting", "agility", "hunter", "thieving"]
 TASK_LEVEL_SKILLS = {"woodcutting": ["woodcutting"], "firemaking": ["firemaking"], "fishing": ["fishing"],
                      "mining": ["mining"], "combat": ["attack", "strength", "defence"], "cooking": ["cooking"],
                      "prayer": ["prayer"], "fletching": ["fletching"], "crafting": ["crafting"],
-                     "thieving": ["thieving"], "smithing": ["smithing"], "ranged": ["ranged"],
+                     "herblore": ["herblore"], "runecrafting": ["runecrafting"], "agility": ["agility"],
+                     "hunter": ["hunter"], "thieving": ["thieving"], "smithing": ["smithing"], "ranged": ["ranged"],
                      "magic": ["magic"]}
 # tasks that spawn their own supplies: need game data + 'Spawn missing tools'
 SPAWN_TASKS = {"cooking": "raw fish", "prayer": "bones", "fletching": "logs and a knife",
-               "crafting": "uncut gems and a chisel", "smithing": "bars and a hammer", "magic": "runes"}
+               "crafting": "uncut gems and a chisel", "smithing": "bars and a hammer", "magic": "runes",
+               "herblore": "unfinished potions and their ingredients", "runecrafting": "pure essence"}
 STEP_RETRIES = 3                      # attempts per step before moving on
 STALL_LIMIT_S = 360                   # a step with no progress/XP this long is restarted
 RESET_AFTER_S = 600                   # a run that lasted this long counts as having gone well
@@ -382,8 +385,27 @@ def preflight(s: "Settings"):
         elif s.task == "cooking":
             fixes.append("Spawns the best raw fish your Cooking level allows, cooks them on its own fire "
                          "where you start (stand somewhere open), drops them, repeats.")
+        elif s.task == "herblore":
+            fixes.append("Spawns unfinished potions + ingredients for the best potion your level makes, mixes "
+                         "them (Make All), drops the potions, repeats. Herblore needs the Druidic Ritual quest: "
+                         "it's marked done with the admin quest command (a level-1 account also gets the "
+                         "quest's 250 XP).")
+        elif s.task == "runecrafting":
+            fixes.append("Teleports into the best altar room for your level (air, mind, water, earth, fire, body, "
+                         "cosmic, nature, law), spawns pure essence, crafts it, repeats; teleports back out at the end.")
         else:
             fixes.append(f"Spawns {what} for your level, trains on them where you start, drops the results, repeats.")
+    elif s.task == "agility":
+        if not _names_from_game():
+            errors.append("Agility needs the game's own data (it finds the obstacles in the scene).")
+        fixes.append("Teleports to the Gnome Stronghold course and runs laps; back to the start when it "
+                     "gets lost, back where you were at the end.")
+    elif s.task == "hunter":
+        if not (_names_from_game() and s.spawn_tools):
+            errors.append("Hunter needs the game's own data and 'Spawn missing tools' (it spawns its traps).")
+        fixes.append("Teleports to the creatures for your level (crimson swifts, cerulean twitches, tropical "
+                     "wagtails, then chinchompas and red chinchompas), lays as many traps as the level allows, "
+                     "checks catches, drops the bones and meat; back where you were at the end.")
     elif s.task == "thieving":
         if not _names_from_game():
             errors.append("Thieving needs the game's own data (it finds people to pickpocket in the NPC list).")
@@ -586,8 +608,11 @@ def task_problem(s: Settings):
     if s.task in SPAWN_TASKS:
         return None if s.spawn_tools and _names_from_game() else \
             f"{s.task.capitalize()} needs the game's own data and 'Spawn missing tools' (it spawns its {SPAWN_TASKS[s.task]})"
-    if s.task == "thieving":
-        return None if _names_from_game() else "Thieving needs the game's own data"
+    if s.task in ("thieving", "agility"):
+        return None if _names_from_game() else f"{s.task.capitalize()} needs the game's own data"
+    if s.task == "hunter":
+        return None if s.spawn_tools and _names_from_game() else \
+            "Hunter needs the game's own data and 'Spawn missing tools' (it spawns its traps)"
     if s.task == "firemaking":
         if not [t for t in s.fm_logs if mouseover.available(t) or _names_from_game()]:
             return "None of the ticked logs have been learned yet (open the bank and use 'Learn bank items')"
@@ -622,6 +647,7 @@ TASK_SKILLS = {
     "mining": ["mining"], "combat": ["attack", "strength", "defence", "hitpoints"],
     "cooking": ["cooking", "firemaking"], "prayer": ["prayer"], "fletching": ["fletching"],
     "crafting": ["crafting"], "thieving": ["thieving", "hitpoints"], "smithing": ["smithing"],
+    "herblore": ["herblore"], "runecrafting": ["runecrafting"], "agility": ["agility"], "hunter": ["hunter"],
     "ranged": ["ranged", "hitpoints"], "magic": ["magic"],
 }
 
@@ -706,10 +732,11 @@ class BotController:
         if s.task == "cooking":
             from lumberjack.skills.cooking_task import Cooker
             return Cooker(spawn_tools=s.spawn_tools, **common)
-        if s.task in ("prayer", "fletching", "crafting", "smithing"):
+        if s.task in ("prayer", "fletching", "crafting", "smithing", "herblore", "runecrafting"):
             from lumberjack.skills import spawn_tasks
             cls = {"prayer": spawn_tasks.Prayer, "fletching": spawn_tasks.Fletcher,
-                   "crafting": spawn_tasks.Crafter, "smithing": spawn_tasks.Smither}[s.task]
+                   "crafting": spawn_tasks.Crafter, "smithing": spawn_tasks.Smither,
+                   "herblore": spawn_tasks.Herbalist, "runecrafting": spawn_tasks.Runecrafter}[s.task]
             return cls(spawn_tools=s.spawn_tools, **common)
         if s.task == "thieving":
             from lumberjack.skills.thieving_task import Thief
@@ -729,6 +756,12 @@ class BotController:
                          spawn_tools=s.spawn_tools, drop_at=s.drop_at, mine_spot=s.mine_spot,
                          bank_spot=s.bank_spot, max_logs=s.max_logs, map_name=s.map or None,
                          keep_carried=s.keep_carried, **common)
+        if s.task == "hunter":
+            from lumberjack.skills.hunter_task import Hunter
+            return Hunter(**common)
+        if s.task == "agility":
+            from lumberjack.skills.agility_task import Agility
+            return Agility(**common)
         if s.task == "magic":
             from lumberjack.skills.magic_task import Mage
             return Mage(spawn_tools=s.spawn_tools, **common)
@@ -953,7 +986,7 @@ class BotController:
         first_as_is: the first attempt starts exactly as the user set it up (single-task Start)."""
         from lumberjack.core import gamestate
         from lumberjack.nav import places
-        failures, attempt, back_to = 0, 0, None
+        failures, attempt, back_to, checked = 0, 0, None, False
         deadline = time.monotonic() + s.max_minutes * 60 if s.max_minutes else None
         while failures < STEP_RETRIES:
             if self.stop_event.is_set():
@@ -1025,10 +1058,41 @@ class BotController:
                 failures = 0                       # it had been going well - a fresh start
             failures += 1
             back_to = getattr(self.bot, "displaced_from", None) or back_to
+            if place is not None and not checked and failures < STEP_RETRIES:
+                checked = True
+                moved = self._recheck_place(place_name, log)
+                if moved:
+                    place, back_to = moved, None
             if failures < STEP_RETRIES:
                 log.warning("Ended early (%s) - recovering, try %d of %d", reason, failures + 1, STEP_RETRIES)
         log.warning("Giving up after %d tries in a row", STEP_RETRIES)
         return False
+
+    def _recheck_place(self, place_name, log):
+        """A run at a training-route place ended badly: maybe the place is off (nothing to work
+        on near it). Check it in the game; when its targets are a little way off, the place is
+        moved there (saved under the same name). Returns the moved place, or None."""
+        from lumberjack.core import gamestate
+        from lumberjack.nav import places, training
+        tiers = training.places_to_check().get(place_name)
+        gs = gamestate.shared()
+        if not tiers or gs is None:
+            return None
+        self._doing(f"checking {place_name}")
+        try:
+            ctx = self._ctx()
+            try:
+                res = training.check_place(ctx, gs, place_name, tiers, fix=True, log=log)
+            finally:
+                ctx.inp.close()
+        except Exception as e:                 # a check is a bonus - never stop the plan for it
+            log.warning("Couldn't check %s (%s)", place_name, e)
+            return None
+        finally:
+            self._doing(None)
+        if res.get("status") == "moved":
+            return places.load().get(place_name)
+        return None
 
     def _maybe_update(self, log):
         """Between plan steps: a newer version on GitHub -> pull it and restart the panel on it;

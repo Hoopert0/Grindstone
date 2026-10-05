@@ -92,6 +92,22 @@ def click_plan(hover_action, method, menu_ready):
     return "menu" if menu_ready or method in OFFERS.get(hover_action, ()) else None
 
 
+SHARK_LEVEL = 76
+
+
+def harpoon_spots(offering, method, level):
+    """Harpoon is on two kinds of spot: cage/harpoon (tuna, swordfish) and net/harpoon (sharks,
+    76+). Below 76 a net/harpoon spot only says "You need level 76", so skip those; from 76 on
+    prefer them. Other methods: unchanged."""
+    if method != "harpoon":
+        return offering
+    sword = [sp for sp in offering if "Cage" in sp["ops"]]
+    shark = [sp for sp in offering if "Net" in sp["ops"]]
+    if level is not None and level >= SHARK_LEVEL:
+        return shark or sword
+    return sword
+
+
 def usable_method(method, spot_action, map_methods, missing):
     """Can we fish `method` right now? `spot_action` = the left-click word of the spot we're
     at (None = not seen yet), `map_methods` = methods some saved fishing spot lists,
@@ -504,7 +520,8 @@ class Fisher(BotBase):
         spots = self.gs.npcs(SPOT_NAME)
         for sp in spots:
             spot_memory.remember(sp)
-        offering = [sp for sp in spots if verb in sp["ops"]]
+        offering = harpoon_spots([sp for sp in spots if verb in sp["ops"]], self.method,
+                                 (getattr(self, "levels", None) or {}).get("fishing"))
         if not offering and not walked and self.walk_to_remembered_spot(verb):
             return self.find_and_use_spot_gs(walked=True)
         if not spots:

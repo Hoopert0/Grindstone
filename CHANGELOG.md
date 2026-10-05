@@ -1,5 +1,16 @@
 # Changelog
 
+## More skills, longer routes
+
+- New skills: Herblore, Runecrafting, Agility and Hunter - Autopilot trains them too
+- Longer routes: combat to hill giants, ice warriors, ankou and fire giants; thieving paladins
+  and heroes; maples and yews; the Mining guild; harpoon fishing (swordfish, then sharks)
+- ★ places are placed on real spawn clusters from the server's data, and a run that finds
+  nothing at a ★ place checks it in the game and moves it to its targets
+- Fresh accounts: food is topped up before fighting and the starter kit is dropped for room
+- Steadier game: the add-on no longer reads the game's caches from outside its own thread
+  (the cause of freeze-then-crash in combat); auto login clicks "Click here to play"
+
 ## First public release
 
 - 13 skills: woodcutting, fishing (+ cooking), mining, combat, ranged, magic, thieving,

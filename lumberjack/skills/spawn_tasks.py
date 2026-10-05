@@ -14,6 +14,7 @@ All of them need the game's own data (items by name) and 'Spawn missing tools'.
 """
 import logging
 import time
+import types
 
 from lumberjack import actions, items
 from lumberjack.skills.base import BotBase, StopBot
@@ -63,12 +64,13 @@ class SupplyTask(BotBase):
                 raise StopBot(f"{self.name.capitalize()} needs the game's own data and 'Spawn missing tools' "
                               "(it spawns its supplies)")
             self.home = self.gs.player()["tile"]
+            self.setup()
             stalls = 0
             while True:
                 self.check_stop()
                 tools = self.ensure_tools()
                 inv = backpack.slots() or []
-                supply = [i for i, s in enumerate(inv) if s["key"] in self.SUPPLY and s["key"] not in self.blocked]
+                supply = self.supply_slots(inv)
                 if not supply:
                     self.restock(inv, tools)
                     continue
@@ -80,18 +82,45 @@ class SupplyTask(BotBase):
                     continue
                 stalls += 1
                 if stalls >= MAX_STALLS:
-                    kind = inv[supply[0]]["key"]
+                    kind = self.supply_kind(inv, supply)
                     self.log.warning("Nothing happened with %s %d times - trying a lower one",
                                      kind.replace("_", " "), stalls)
                     self.blocked.add(kind)
-                    actions.drop_known(self.ctx, self.gs, supply)
+                    actions.drop_known(self.ctx, self.gs, self.leftovers(inv, supply))
+                    self.current = None
                     stalls = 0
         except StopBot as e:
             self.stop_reason = str(e)
             self.log.info("Stopped: %s. %s", e, self.stats())
         finally:
+            try:
+                self.teardown()
+            except Exception as e:              # the game went away: nothing to tidy
+                self.log.debug("teardown: %s", e)
             self.state = "stopped"
             self.inp.close()
+
+    def setup(self):
+        """Once at the start, after the game data is there (e.g. unlock the skill)."""
+
+    def teardown(self):
+        """Once at the end, however the run ended (e.g. leave a place only teleports reach)."""
+
+    def supply_slots(self, inv):
+        """The slots of the supply to process now ([] = restock)."""
+        return [i for i, s in enumerate(inv) if s["key"] in self.SUPPLY and s["key"] not in self.blocked]
+
+    def supply_kind(self, inv, supply):
+        """What gets blocked when processing keeps doing nothing."""
+        return inv[supply[0]]["key"]
+
+    def leftovers(self, inv, supply):
+        """Slots dropped along with a blocked supply."""
+        return supply
+
+    def spawn_supply(self, kind):
+        """Fill the backpack with `kind` (best_supply's pick). False if nothing arrived."""
+        return bool(items.fill(self.ctx, kind, 28))
 
     def ensure_tools(self):
         """{tool key: slot}, spawning what's missing."""
@@ -121,7 +150,7 @@ class SupplyTask(BotBase):
         if self.current is None:
             raise StopBot(f"nothing left to train {self.skill} on at level {lv}")
         self.state = f"spawning {self.current.replace('_', ' ')}"
-        if not items.fill(self.ctx, self.current, 28):
+        if not self.spawn_supply(self.current):
             raise StopBot("couldn't spawn supplies (backpack full of other things?)")
 
     def walk_home(self):
@@ -279,6 +308,206 @@ class Smither(SupplyTask):
                 self.inp.move(260, 300)
                 return self.wait_used({kind}, still_s=6.0, start=before)
         return 0
+
+
+# ---- Herblore ----------------------------------------------------------------------------------
+# (level, potion, unfinished potion, secondary) - from the 2009scape server's FinishedPotion table
+POTIONS = [
+    (3, "attack_potion", "guam_potion_(unf)", "eye_of_newt"),
+    (5, "antipoison", "marrentill_potion_(unf)", "unicorn_horn_dust"),
+    (12, "strength_potion", "tarromin_potion_(unf)", "limpwurt_root"),
+    (22, "restore_potion", "harralander_potion_(unf)", "red_spiders'_eggs"),
+    (26, "energy_potion", "harralander_potion_(unf)", "chocolate_dust"),
+    (30, "defence_potion", "ranarr_potion_(unf)", "white_berries"),
+    (34, "agility_potion", "toadflax_potion_(unf)", "toad's_legs"),
+    (36, "combat_potion", "harralander_potion_(unf)", "goat_horn_dust"),
+    (38, "prayer_potion", "ranarr_potion_(unf)", "snape_grass"),
+    (45, "super_attack", "irit_potion_(unf)", "eye_of_newt"),
+    (48, "super_antipoison", "irit_potion_(unf)", "unicorn_horn_dust"),
+    (50, "fishing_potion", "avantoe_potion_(unf)", "snape_grass"),
+    (52, "super_energy", "avantoe_potion_(unf)", "mort_myre_fungus"),
+    (55, "super_strength", "kwuarm_potion_(unf)", "limpwurt_root"),
+    (60, "weapon_poison", "kwuarm_potion_(unf)", "dragon_scale_dust"),
+    (63, "super_restore", "snapdragon_potion_(unf)", "red_spiders'_eggs"),
+    (66, "super_defence", "cadantine_potion_(unf)", "white_berries"),
+    (69, "antifire", "lantadyme_potion_(unf)", "dragon_scale_dust"),
+    (72, "ranging_potion", "dwarf_weed_potion_(unf)", "wine_of_zamorak"),
+    (76, "magic_potion", "lantadyme_potion_(unf)", "potato_cactus"),
+    (78, "zamorak_brew", "torstol_potion_(unf)", "jangerberries"),
+]
+RECIPES = {name: (lv, unf, sec) for lv, name, unf, sec in POTIONS}
+DRUIDIC_RITUAL = (48, 80, 4)          # quest index, its varp, the varp's value once complete
+RITUAL_XP = 250                       # the quest's Herblore reward (Herblore needs level 3)
+
+
+class Herbalist(SupplyTask):
+    """Spawned unfinished potions + secondaries -> the best potion for the level (Make All).
+    Herblore needs the Druidic Ritual quest: it's marked done with the admin quest command, and
+    a level-1 account gets the quest's 250 XP the same way."""
+    name = "herblore"
+    skill = "herblore"
+    unit = "potions made"
+    SUPPLY = {name: lv for lv, name, _, _ in POTIONS}       # best_supply picks a recipe
+    PER_LOAD = 14
+
+    def setup(self):
+        from lumberjack.core import gamestate
+        quest, varp, done = DRUIDIC_RITUAL
+        try:
+            have = self.gs.varps(varp).get(varp)
+        except gamestate.GameStateError:
+            have = None                     # an older add-on: unlock anyway (harmless if done)
+        if have != done:
+            self.state = "unlocking Herblore"
+            self.log.info("Herblore needs the Druidic Ritual quest - marking it done (::setqueststage %d 100)", quest)
+            self.type_command(f"::setqueststage {quest} 100")
+        if (gamestate.skill("herblore") or {}).get("base", 1) < 3:
+            self.log.info("Adding the quest's %d Herblore XP (level 3 is the lowest anything needs)", RITUAL_XP)
+            self.type_command(f"::addxp herblore {RITUAL_XP}")
+            for _ in range(10):
+                if (gamestate.skill("herblore") or {}).get("base", 1) >= 3:
+                    break
+                self.sleep(0.5)
+
+    def type_command(self, text):
+        self.inp.move(260, 300)
+        self.inp.type_text(text, enter=True)
+        self.sleep(1.5)
+
+    def _slots(self, inv, key):
+        iid = items.BY_KEY[key][1]
+        return [i for i, s in enumerate(inv) if s["id"] == iid]
+
+    def supply_slots(self, inv):
+        if self.current not in RECIPES:
+            return []
+        _, unf, sec = RECIPES[self.current]
+        u, s = self._slots(inv, unf), self._slots(inv, sec)
+        return u + s if u and s else []
+
+    def supply_kind(self, inv, supply):
+        return self.current
+
+    def spawn_supply(self, kind):
+        _, unf, sec = RECIPES[kind]
+        got = items.fill(self.ctx, unf, self.PER_LOAD)
+        return bool(got and items.fill(self.ctx, sec, got))
+
+    def process(self, inv, supply_slots, tools):
+        _, unf, sec = RECIPES[self.current]
+        u, s = self._slots(inv, unf), self._slots(inv, sec)
+        before = len(u)
+        if not (actions.use_slot(self.ctx, self.gs, s[0], "Use")
+                and actions.use_slot(self.ctx, self.gs, u[0], "Use")):
+            actions.cancel_selection(self.ctx, force=True)
+            return 0
+        count = lambda: len(self._slots(backpack_slots(), unf))
+        if not make_all(self.ctx, self.gs):          # one of either: made straight away
+            self.sleep(2.0)
+            return before - count()
+        self.inp.move(260, 300)
+        end, last, quiet = time.monotonic() + 60, before, time.monotonic()
+        while time.monotonic() < end and last:
+            self.sleep(0.6)
+            if actions.dismiss_dialog(self.ctx):
+                break
+            now = count()
+            if now < last:
+                last, quiet = now, time.monotonic()
+            elif time.monotonic() - quiet > 4.0:
+                break
+        return before - last
+
+
+# ---- Runecrafting ------------------------------------------------------------------------------
+# (level, rune, the altar room's arrival tile) - the server's MysteriousRuins ends. Crafting at an
+# altar has no quest check (Astral/Death/Blood aside, left out); only the ruins do, and an admin
+# teleport goes past them. Chaos is left out too: its altar sits at the bottom of a maze.
+ALTARS = [
+    (1, "air_rune", (2841, 4829, 0)),
+    (2, "mind_rune", (2793, 4828, 0)),
+    (5, "water_rune", (3482, 4838, 0)),
+    (9, "earth_rune", (2655, 4830, 0)),
+    (14, "fire_rune", (2574, 4849, 0)),
+    (20, "body_rune", (2521, 4834, 0)),
+    (27, "cosmic_rune", (2162, 4833, 0)),
+    (44, "nature_rune", (2400, 4835, 0)),
+    (54, "law_rune", (2464, 4819, 0)),
+]
+ALTAR_RADIUS = 20
+
+
+def best_altar(level):
+    return max((a for a in ALTARS if a[0] <= level), key=lambda a: a[0])
+
+
+class Runecrafter(SupplyTask):
+    """Teleport into the best altar room for the level, spawn pure essence, Craft-rune at the
+    altar, repeat; teleport on to the next altar as the level allows, and back out at the end."""
+    name = "runecrafting"
+    skill = "runecrafting"
+    unit = "essence crafted"
+    SUPPLY = {"pure_essence": 1}
+
+    def setup(self):
+        from lumberjack.core import gamestate
+        me = self.gs.player()
+        self.came_from = (me["tile"][0], me["tile"][1], me.get("plane", 0))
+        self.altar = None
+        self.go_to_altar((gamestate.skill("runecrafting") or {}).get("base", 1))
+
+    def go_to_altar(self, level):
+        from lumberjack.nav import places
+        altar = best_altar(level)
+        if altar == self.altar:
+            return
+        lv, rune, (x, y, plane) = altar
+        self.state = f"teleporting to the {rune.split('_')[0]} altar"
+        self.log.info("Runecrafting %s runes (level %d+) - teleporting to the altar", rune.split("_")[0], lv)
+        if not places.teleport(self.ctx, self.gs, (x, y), plane):
+            raise StopBot(f"couldn't teleport to the {rune.split('_')[0]} altar (::tele {x} {y} {plane})")
+        self.altar, self.home = altar, [x, y]
+
+    def restock(self, inv, tools):
+        from lumberjack.core import gamestate
+        self.go_to_altar((gamestate.skill("runecrafting") or {}).get("base", 1))
+        super().restock(inv, tools)
+
+    def process(self, inv, supply_slots, tools):
+        from lumberjack.core import interact
+        before = len(supply_slots)
+        altars = [l for l in self.gs.locs(ALTAR_RADIUS, "altar")
+                  if l["name"] == "Altar" and "Craft-rune" in (l.get("ops") or [])]
+        if not altars:
+            raise StopBot("no runecrafting altar here - the teleport went somewhere else")
+        a = altars[0]
+        if not interact.use_option(self.ctx, self.gs, interact.points_for(a), "Craft-rune", "Altar"):
+            interact.walk_to_tile(self.ctx, self.gs, a["tile"], arrive=3)    # off screen: get closer
+            return 0
+        end = time.monotonic() + 15                 # walk over, then every essence at once
+        while time.monotonic() < end:
+            self.sleep(0.6)
+            left = self.count({"pure_essence"})
+            if left < before:
+                self.sleep(0.6)
+                return before - self.count({"pure_essence"})
+        return 0
+
+    def walk_home(self):
+        pass                                        # the altar room is small: stay by the altar
+
+    def teardown(self):
+        from lumberjack.nav import places
+        if getattr(self, "altar", None) and getattr(self, "came_from", None):
+            x, y, plane = self.came_from
+            self.log.info("Leaving the altar - teleporting back")
+            ctx = types.SimpleNamespace(inp=self.inp, sleep=time.sleep)
+            places.teleport(ctx, self.gs, (x, y), plane)
+
+
+def backpack_slots():
+    from lumberjack.core import backpack
+    return backpack.slots() or []
 
 
 def make_all(ctx, gs, wait_s=3.0):

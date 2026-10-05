@@ -18,6 +18,7 @@ final class GameThread extends plugin.Plugin {
     private static final ConcurrentLinkedQueue<FutureTask<?>> QUEUE = new ConcurrentLinkedQueue<>();
     private static volatile boolean registered;
     private static volatile long lastRun;
+    private static final long RUNNING_MAX_MS = 8000;   // a started lookup may take this much longer
 
     private GameThread() {}
 
@@ -59,18 +60,35 @@ final class GameThread extends plugin.Plugin {
         return registered;
     }
 
+    /** The hook is registered but the client never runs it (a client without LateDraw). */
+    static final class NoHook extends RuntimeException {
+        NoHook() {
+            super("the game never ran the add-on's per-frame hook");
+        }
+    }
+
     static boolean ready() {
         return registered || install();
     }
 
     /** Run `work` on the game thread and wait for it (the game frozen or not drawing = timeout). */
     static <T> T call(Callable<T> work, long timeoutMs) throws Exception {
-        FutureTask<T> t = new FutureTask<>(work);
+        java.util.concurrent.atomic.AtomicBoolean started = new java.util.concurrent.atomic.AtomicBoolean();
+        FutureTask<T> t = new FutureTask<>(() -> {
+            started.set(true);
+            return work.call();
+        });
         QUEUE.add(t);
         try {
-            return t.get(timeoutMs, TimeUnit.MILLISECONDS);
+            try {
+                return t.get(timeoutMs, TimeUnit.MILLISECONDS);
+            } catch (java.util.concurrent.TimeoutException e) {
+                if (!started.get()) throw e;
+                return t.get(RUNNING_MAX_MS, TimeUnit.MILLISECONDS);   // a big scan under way: let it finish
+            }
         } catch (java.util.concurrent.TimeoutException e) {
             t.cancel(false);                        // not run yet = never runs
+            if (lastRun == 0) throw new NoHook();   // this client never calls LateDraw
             throw new IllegalStateException("game busy (no frame drawn in " + timeoutMs + " ms)");
         } catch (java.util.concurrent.ExecutionException e) {
             Throwable c = e.getCause();

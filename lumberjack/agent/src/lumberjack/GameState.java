@@ -40,7 +40,13 @@ final class GameState {
             } catch (Throwable e) {                 // client without the plugin classes
                 ready = false;
             }
-            if (ready) return GameThread.call(() -> query(what, arg), 3000);
+            if (ready) {
+                try {
+                    return GameThread.call(() -> query(what, arg), 3000);
+                } catch (GameThread.NoHook e) {
+                    System.err.println("[lumberjack] " + e.getMessage() + " - reading directly");
+                }
+            }
             noHook = true;
         }
         return query(what, arg);
@@ -61,9 +67,25 @@ final class GameState {
             case "widgets": return widgets(arg);
             case "login": return login(arg);
             case "loginstatus": return loginStatus();
+            case "varp": return varp(arg);
             case "tick": return "{\"loop\":" + statInt("rt4.client", "loop") + ",\"state\":" + statInt("rt4.client", "gameState") + "}";
             default: throw new IllegalArgumentException("unknown state '" + what + "'");
         }
+    }
+
+    /** Server-set varps (quest progress, settings): arg "80 281" -> {"80":4,"281":1000}. */
+    private static String varp(String arg) throws Exception {
+        int[] v = (int[]) stat("rt4.VarpDomain", "varp");
+        StringBuilder b = new StringBuilder("{");
+        boolean first = true;
+        for (String part : (arg == null ? "" : arg.trim()).split("\\s+")) {
+            if (part.isEmpty()) continue;
+            int id = Integer.parseInt(part);
+            if (id < 0 || id >= v.length) continue;
+            b.append(first ? "" : ",").append('"').append(id).append("\":").append(v[id]);
+            first = false;
+        }
+        return b.append('}').toString();
     }
 
     // ---- reflection helpers -------------------------------------------------------------

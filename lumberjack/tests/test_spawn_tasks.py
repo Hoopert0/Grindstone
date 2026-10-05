@@ -269,3 +269,81 @@ def test_melee_gear_by_level(game, monkeypatch):
     monkeypatch.setattr(actions, "use_slot", use)
     f.equip_melee()
     assert worn == ["mithril_scimitar", "steel_full_helm", "steel_platebody", "steel_platelegs", "steel_kiteshield"]
+
+
+def test_herblore_unlocks_spawns_and_mixes(game, monkeypatch):
+    def spawn(ctx, key, n=1):                     # real ids: the herbalist matches by id
+        for _ in range(min(n, sum(s["id"] < 0 for s in game.inv))):
+            i = next(i for i, s in enumerate(game.inv) if s["id"] < 0)
+            game.inv[i] = {"id": items.BY_KEY[key][1], "key": key, "name": key}
+    monkeypatch.setattr(items, "spawn", spawn)
+    typed = []
+    game.varps = lambda *ids: {80: 0}
+    h = bot(S.Herbalist, game)
+    h.inp.type_text = lambda text, enter=False: typed.append(text) or (
+        text.startswith("::addxp") and game.skills_["herblore"].update(level=3))
+    h.setup()
+    assert typed == ["::setqueststage 48 100", "::addxp herblore 250"]
+    game.put("lobster")
+    h.restock(game.inv, {})
+    assert h.current == "attack_potion"
+    assert sum(s["key"] == "guam_potion_(unf)" for s in game.inv) == 14
+    assert sum(s["key"] == "eye_of_newt" for s in game.inv) == 13         # the lobster takes a slot
+    supply = h.supply_slots(game.inv)
+    assert supply
+    used = []
+
+    def use(ctx, gs, i, verb):
+        used.append(game.inv[i]["key"])
+        return True
+    monkeypatch.setattr(actions, "use_slot", use)
+
+    def mix(ctx, gs):                              # Make All: every pair becomes a potion
+        for i, s in enumerate(game.inv):
+            if s["key"] in ("guam_potion_(unf)", "eye_of_newt"):
+                game.inv[i] = {"id": 121, "key": "attack_potion(3)", "name": "x"} if s["key"] == "eye_of_newt" \
+                    else {"id": -1, "key": None, "name": None}
+        return True
+    monkeypatch.setattr(S, "make_all", mix)
+    assert h.process(game.inv, supply, {}) == 14
+    assert used == ["eye_of_newt", "guam_potion_(unf)"]
+    assert h.supply_slots(game.inv) == []        # -> restock: the potions are dropped, food stays
+    h.restock(game.inv, {})
+    assert not any(s["key"] == "attack_potion(3)" for s in game.inv)
+    assert any(s["key"] == "lobster" for s in game.inv)
+    game.skills_["herblore"]["level"] = 40
+    game.varps = lambda *ids: {80: 4}
+    typed.clear()
+    h.setup()
+    assert typed == []                             # already unlocked
+    assert h.best_supply(40) == "prayer_potion" and h.best_supply(2) is None
+
+
+def test_runecrafting_teleports_by_level_and_crafts(game, monkeypatch):
+    from lumberjack.core import interact
+    from lumberjack.nav import places
+    teles = []
+    monkeypatch.setattr(places, "teleport", lambda ctx, gs, tile, plane=0: teles.append((tuple(tile), plane)) or True)
+    r = bot(S.Runecrafter, game)
+    r.setup()
+    assert teles == [((2841, 4829), 0)] and r.came_from == (3200, 3200, 0)     # air altar at level 1
+    r.restock(game.inv, {})
+    assert sum(s["key"] == "pure_essence" for s in game.inv) == 28 and len(teles) == 1
+    game.locs = lambda radius, name=None: [{"name": "Altar", "ops": ["Craft-rune"], "tile": [2843, 4833],
+                                            "screen": [300, 200], "body": [300, 180]}]
+
+    def craft(ctx, gs, points, verb, subject):
+        assert (verb, subject) == ("Craft-rune", "Altar")
+        for i, s in enumerate(game.inv):
+            if s["key"] == "pure_essence":
+                game.inv[i] = {"id": -1, "key": None, "name": None}
+        game.put("air_rune")
+        return 300, 200
+    monkeypatch.setattr(interact, "use_option", craft)
+    assert r.process(game.inv, r.supply_slots(game.inv), {}) == 28
+    game.skills_["runecrafting"]["level"] = 27
+    r.restock(game.inv, {})                       # level 27: on to the cosmic altar, runes dropped
+    assert teles[-1] == ((2162, 4833), 0)
+    assert not any(s["key"] == "air_rune" for s in game.inv)
+    r.teardown()
+    assert teles[-1] == ((3200, 3200), 0)                                       # back where it started

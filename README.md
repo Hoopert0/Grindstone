@@ -25,7 +25,7 @@ every skill for hours, moving to better spots and better gear as you level up.
 
 ## Features
 
-- **13 skills, one panel.** Gathering, combat and artisan skills, each with sensible defaults.
+- **17 skills, one panel.** Gathering, combat and artisan skills, each with sensible defaults.
 - **🤖 Autopilot.** One button trains the whole account by itself - even a brand-new one in
   Lumbridge: combat basics first, quick Prayer, then always the lowest skill up to its next
   milestone, at the best spot for the level.
@@ -55,13 +55,17 @@ every skill for hours, moving to better spots and better gear as you level up.
 | ⚔️ | Combat | Melee, rotating Attack/Strength/Defence; eats, loots, buries bones |
 | 🎯 | Ranged | Combat with the best shortbow for your level and its arrows (spawned, worn) |
 | 🪄 | Magic | Wind Strike → Low Alchemy → Varrock/Camelot Teleport → High Alchemy |
-| 🧤 | Thieving | Pickpockets men → Al Kharid warriors → guards → knights; handles stuns, eats |
+| 🧤 | Thieving | Pickpockets men → Al Kharid warriors → guards → knights → paladins → heroes; handles stuns, eats |
+| 🏃 | Agility | Laps of the Gnome Stronghold course; teleports back to the start when lost |
+| 🪤 | Hunter | Bird snares, then box traps for chinchompas, as many traps as the level allows |
 | 🔥 | Firemaking | Spawns the best logs you can light and burns them (or uses banked logs) |
 | 🍳 | Cooking | Spawns raw fish for your level and cooks them on its own fire |
 | 🦴 | Prayer | Spawns and buries dragon bones |
 | 🏹 | Fletching | Knife on spawned logs → the best bow (u) you can make |
 | 💎 | Crafting | Cuts spawned uncut gems, opal to dragonstone |
 | 🔨 | Smithing | Spawned bars into daggers at an anvil |
+| 🌿 | Herblore | Spawned unfinished potions + ingredients into the best potion for your level |
+| 🔮 | Runecrafting | Teleports into the best altar room, crafts spawned pure essence |
 
 Details, requirements and level tiers: [docs/SKILLS.md](docs/SKILLS.md).
 

@@ -20,19 +20,21 @@ Common options (**Settings** tab → **Run options**):
 Chops the best allowed tree in reach (or picks trees for your level with *Best trees for my
 levels*). When the backpack is full: **drop**, **bank** (the nearest booth, found from the game
 data), **burn** (light the logs) or **fletch** them.
-Route: trees (1) → oaks (15) → willows (30).
+Route: trees (1) → oaks (15) → willows (30) → maples at Seers' (45) → yews at Edgeville (60).
 
 ### 🎣 Fishing (+ cooking)
 Fishes with the chosen method, or switches method as you level (*Switch method as my Fishing
 level goes up*). With *Cook the catch* it chops a log from a nearby tree, lights a fire and
 cooks the catch; burnt fish are dropped, cooked fish dropped or banked. It remembers where it
 has seen fishing spots and walks back to them when none are in range.
-Route: net at Draynor (1) → lure at the Lumbridge river (20) → cage at Catherby (40).
+Route: net at Draynor (1) → lure at the Lumbridge river (20) → cage at Catherby (40) → harpoon
+at Catherby (50: swordfish, sharks from 76).
 
 ### ⛏️ Mining
 Mines the chosen ores (or the best for your level). It learns which rock holds which ore as it
 goes, shared through `rock_ores.json`. Drops or banks when full.
-Route: copper/tin (1) → iron (15) at Varrock east mine → coal (30) at the Barbarian Village mine.
+Route: copper/tin (1) → iron (15) at Varrock east mine → coal (30) at the Barbarian Village mine
+→ mithril + coal in the Mining guild (55).
 
 ## Combat
 
@@ -41,7 +43,8 @@ With *Spawn missing tools* it wears the best scimitar for your Attack level and 
 for your Defence level, upgrading as you level. Attacks the chosen monsters, switching attack style to train the lowest of Attack, Strength and
 Defence (or one you pick). Eats below the set HP%; with no food picked it spawns lobsters. Loots
 the chosen drops, buries bones, and banks loot when the backpack fills.
-Route: chickens (1) → cows (5) → goblins (10) → Al Kharid warriors (20).
+Route: chickens (1) → cows (5) → goblins (10) → Al Kharid warriors (20) → hill giants in the
+Edgeville dungeon (30) → ice warriors (45) → ankou in the Stronghold of Security (60) → fire giants (75).
 
 ### 🎯 Ranged · spawns
 Wears the best shortbow for your Ranged level (shortbow → oak 5 → willow 20 → maple 30 →
@@ -63,7 +66,18 @@ Runes are spawned 1,000 at a time. Spells are found in the spellbook by name.
 Pickpockets the nearest suitable person. Being caught (HP drops) means a stun - it waits it out.
 Eats below the set HP% (spawns lobsters when out). Drops junk but keeps coins and food.
 Route: men & women in Lumbridge (1) → Al Kharid warriors (25) → Varrock guards (40) →
-Ardougne knights (55).
+Ardougne knights (55) → paladins (70) → heroes (80).
+
+### 🏃 Agility
+Teleports to the Gnome Stronghold course and runs laps: each obstacle is found by its id in the
+scene, and when it gets lost or stuck it teleports back to the start. At the end it teleports
+back to where you were.
+
+### 🪤 Hunter · spawns
+Teleports to the creatures for your level, lays as many traps as the level allows (1, +1 at
+20/40/60/80), checks catches, picks up collapsed traps and drops the bones and meat.
+Route: crimson swifts (1) → cerulean twitches (11) → tropical wagtails (19) with bird snares →
+chinchompas (53) → red chinchompas (63) with box traps.
 
 ## Artisan (all spawn their supplies)
 
@@ -78,6 +92,8 @@ the result and repeats. Stand somewhere open.
 | 🏹 Fletching | logs + knife → arrow shafts (1), bows (u) (shortbow 5, longbow 10, oak 20/25, willow 35/40, maple 50/55, yew 65/70, magic 80/85) |
 | 💎 Crafting | uncut gems + chisel → cut (opal 1, jade 13, red topaz 16, sapphire 20, emerald 27, ruby 34, diamond 43, dragonstone 55) |
 | 🔨 Smithing | bars + hammer → daggers at an anvil (bronze 1, iron 15, steel 30, mithril 50, adamant 70, rune 85). Start next to an anvil, e.g. ★ Varrock anvil |
+| 🌿 Herblore | unfinished potions + secondaries → the best potion for your level (attack 3 … zamorak brew 78). Herblore needs the Druidic Ritual quest: it's marked done with the admin quest command, and a level-1 account gets the quest's 250 XP |
+| 🔮 Runecrafting | pure essence → runes. Teleports into the best altar room for your level (air 1, mind 2, water 5, earth 9, fire 14, body 20, cosmic 27, nature 44, law 54) and back out at the end |
 
 ## Item spawner
 
