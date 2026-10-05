@@ -168,6 +168,16 @@ class GameState:
         """Visible interface components (see ui.widgets)."""
         return self._q("widgets" + (f" {match}" if match is not None else ""))
 
+    def login(self, user, password):
+        """Log in from the login screen (the client's own login action). {'ok', 'why'}."""
+        import base64
+        enc = lambda t: base64.b64encode(t.encode("utf-8")).decode("ascii")
+        return self._q(f"login {enc(user)} {enc(password)}")
+
+    def login_status(self):
+        """{'state' (10 login screen, 30 in game), 'step', 'reply'}."""
+        return self._q("loginstatus")
+
     def ground(self, radius=15):
         """Items on the ground within `radius` tiles (this floor), nearest first:
         [{'id', 'count', 'name', 'tile', 'dist', 'screen'}]."""

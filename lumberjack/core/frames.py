@@ -57,5 +57,5 @@ def grab():
         except (OSError, ValueError, IndexError):
             _close()
             return None
-    img = np.frombuffer(data, np.uint8).reshape(h, w, 4)[..., :3].copy()
-    return img if img.max() >= 8 else None                         # not drawn yet
+    # even a dark frame (loading screen): never fall back to screen grabs while the add-on answers
+    return np.frombuffer(data, np.uint8).reshape(h, w, 4)[..., :3].copy()

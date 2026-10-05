@@ -4,6 +4,7 @@ import os
 import shutil
 import socket
 import subprocess
+import time
 from pathlib import Path
 from lumberjack import procs
 
@@ -73,6 +74,11 @@ def ensure_type_agent():
 
 def find_client_pid():
     """PID of the 2009scape *client* JVM (not the singleplayer server JVM)."""
+    return find_client()[0]
+
+
+def find_client():
+    """(pid, command line) of the 2009scape *client* JVM (not the singleplayer server JVM)."""
     out = procs.run(
         ["powershell", "-NoProfile", "-Command",
          "Get-CimInstance Win32_Process -Filter \"Name='java.exe' or Name='javaw.exe'\" | ForEach-Object { \"$($_.ProcessId)|$($_.CommandLine)\" }"],
@@ -80,8 +86,8 @@ def find_client_pid():
     for line in out.splitlines():
         pid, _, cmd = line.partition("|")
         if "server.jar" not in cmd and ("2009scape.jar" in cmd or "client.jar" in cmd):
-            return int(pid)
-    raise RuntimeError("2009scape client process not found")
+            return int(pid), cmd
+    raise RuntimeError("The game isn't running (it was closed or crashed) - start it with the Grindstone icon.")
 
 
 def is_running(port=PORT):
@@ -104,11 +110,24 @@ def ensure_agent(port=PORT):
             raise
         jar = JAR  # the game has the current jar open (locked) - it's the one it runs anyway
     jdk = find_jdk_bin()
-    pid = find_client_pid()
-    procs.run([str(jdk / "java.exe"), "-cp", str(jar), "lumberjack.Attach", str(pid), str(jar), str(port)], check=True)
+    pid, cmd = find_client()
+    if "-javaagent" in cmd:                  # Grindstone started it: the add-on is coming, the game is loading
+        for _ in range(120):
+            if is_running(port):
+                return
+            time.sleep(0.5)
+        raise RuntimeError("The game is running but its add-on isn't answering - close the game and start it "
+                           "again with the Grindstone icon (and send logs\\client.log if it keeps happening).")
+    r = procs.run([str(jdk / "java.exe"), "-cp", str(jar), "lumberjack.Attach", str(pid), str(jar), str(port)],
+                  capture_output=True, text=True)
+    if r.returncode != 0:
+        lines = (r.stderr or r.stdout or "").strip().splitlines()
+        why = [next((l for l in lines if "Exception" in l or "Error" in l), lines[0] if lines else "")]
+        raise RuntimeError("The game wasn't started by Grindstone, so its add-on isn't loaded (and can't be added "
+                           "now). Close the game window - and the 2009scape launcher's singleplayer - then start "
+                           "the game with the Grindstone icon." + (f" [{why[0][:160]}]" if why[0] else ""))
     for _ in range(20):
         if is_running(port):
             return
-        import time
         time.sleep(0.1)
     raise RuntimeError("Agent attached but not answering on port %d" % port)

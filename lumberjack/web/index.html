@@ -511,6 +511,24 @@
 
     <!-- Tools -->
     <div class="tabpanel" data-tab="tools" role="tabpanel" hidden>
+    <!-- Auto login -->
+    <div class="card">
+      <h2>Auto login</h2>
+      <div class="hint" style="margin:0 0 10px">Logs in by itself whenever the game shows its login screen - at start,
+        after a crash restart or a disconnect. Saved only on this PC (<code>configs\login.json</code>, plain text),
+        never uploaded or synced.</div>
+      <div class="grid2">
+        <input id="lg_user" type="text" placeholder="username" autocomplete="off">
+        <input id="lg_pass" type="password" placeholder="password" autocomplete="new-password">
+      </div>
+      <div class="radios" style="margin-top:8px">
+        <label><input id="lg_on" type="checkbox"> Log in automatically</label>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button id="lg_save" class="grow" type="button">Save</button>
+      </div>
+      <div id="lgmsg" class="msg"></div>
+    </div>
     <!-- Manual controls -->
     <div class="card">
       <h2>Manual controls</h2>
@@ -982,7 +1000,7 @@ $("drop_at").addEventListener("input", e => $("dropv").textContent = e.target.va
 $("eat_below").addEventListener("input", e => $("eatv").textContent = e.target.value);
 document.querySelector("aside").addEventListener("change", (e) => {
   const id = e.target.id, nm = e.target.name;
-  if (["spotname", "spotkind", "recname", "learnname", "goto_spot", "fl_slot", "fl_name", "cb_name", "lt_name", "placename", "planloop", "plantele", "planlowest", "planresume", "planupdate", "planhours"].includes(id)
+  if (["spotname", "spotkind", "recname", "learnname", "goto_spot", "fl_slot", "fl_name", "cb_name", "lt_name", "placename", "planloop", "plantele", "planlowest", "planresume", "planupdate", "planhours", "lg_user", "lg_pass", "lg_on"].includes(id)
       || e.target.closest("#plansteps") || nm === "spot") return;
   if (id === "cook") $("cook-opts").style.opacity = e.target.checked ? 1 : .45;
   if (id === "map") { savedSpots = null; saved.start_spot = saved.chop_spot = saved.bank_spot = saved.fish_spot = saved.mine_spot = saved.fight_spot = null; renderSpots(); }
@@ -1240,6 +1258,21 @@ $("copylog").onclick = async () => {
 document.addEventListener("visibilitychange", () => {
   $("view").src = document.hidden ? "" : "/stream.mjpg?" + Date.now();
 });
+
+// ---- auto login ----
+async function loadLogin() {
+  try {
+    const l = await (await fetch("/api/login")).json();
+    $("lg_user").value = l.user || ""; $("lg_on").checked = !!l.enabled;
+    $("lg_pass").placeholder = l.has_password ? "password (saved - type to change)" : "password";
+  } catch (e) {}
+}
+$("lg_save").onclick = async () => {
+  const j = await post("/api/login", { user: $("lg_user").value, password: $("lg_pass").value || null,
+                                       enabled: $("lg_on").checked }, $("lgmsg"));
+  if (j.ok) { $("lg_pass").value = ""; $("lgmsg").textContent = "Saved."; loadLogin(); }
+};
+loadLogin();
 
 loadOptions().then(runCheck);
 loadPlan();

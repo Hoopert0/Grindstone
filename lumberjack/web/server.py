@@ -195,11 +195,16 @@ def _levels():
 STEP_OPTIONS = {"trees", "auto_trees", "when_full", "fish_method", "auto_fish", "cook", "cooked_action",
                 "fire_trees", "ores", "auto_ores", "mine_full", "targets", "foods", "eat_below", "train",
                 "loot", "bury_bones", "fm_logs", "drop_at", "thieve", "spawn_tools", "clear_at_start",
-                "recover", "keep_carried"}
+                "recover", "keep_carried", "map", "spots", "chop_spot", "fish_spot", "mine_spot",
+                "fight_spot", "bank_spot", "burn_spot", "start_mode", "start_spot"}
 # Autopilot's own settings: fastest XP, nothing to babysit - not whatever the Settings tab last had
 AUTOPILOT_OPTIONS = {"when_full": "drop", "mine_full": "drop", "cook": True, "cooked_action": "drop",
                      "foods": [], "loot": [], "bury_bones": False, "train": "auto", "spawn_tools": True,
-                     "clear_at_start": True, "recover": True, "keep_carried": True, "drop_at": 28}
+                     "clear_at_start": True, "recover": True, "keep_carried": True, "drop_at": 28,
+                     # the game's own data finds the way: no pixel-era maps (their learner grabs the screen)
+                     "map": None, "spots": None, "chop_spot": None, "fish_spot": None, "mine_spot": None,
+                     "fight_spot": None, "bank_spot": None, "burn_spot": None, "start_mode": "here",
+                     "start_spot": None}
 
 
 def step_level(step, levels):
@@ -965,7 +970,15 @@ class BotController:
             if not fresh:
                 self._wait_for_game(log)
                 target = back_to or place
-                ctx = self._ctx()
+                try:
+                    ctx = self._ctx()
+                except Exception as e:             # the game went away again: wait and retry
+                    log.warning("Can't reach the game (%s) - waiting for it", e)
+                    from lumberjack.core import gamestate as _gs
+                    _gs.drop_shared()
+                    failures += 1
+                    self._sleep(10)
+                    continue
                 try:
                     self._recover(ctx)
                     if target:
@@ -1050,8 +1063,15 @@ class BotController:
         """The game closed (or the add-on is gone): wait for it rather than burning attempts."""
         from lumberjack.core import gamestate
         global _win
-        if gamestate.shared() is not None:
-            return
+        gs = gamestate.shared()
+        if gs is not None:
+            try:
+                gs.player()                       # really answering, not a stale connection
+                return
+            except gamestate.GameStateError:
+                gamestate.drop_shared()
+            except Exception:
+                return
         log.warning("The game isn't answering - waiting for it (start it with the Grindstone icon)")
         self._doing("waiting for the game")
         while gamestate.shared() is None:
@@ -1925,6 +1945,88 @@ def handle_freeze(log):
     procs.run(["taskkill", "/PID", str(pid), "/F"], capture_output=True)
 
 
+# ---- auto login -------------------------------------------------------------------------------
+LOGIN_FILE = HERE.parents[0] / "configs" / "login.json"     # this PC only (configs/ is never synced)
+LOGIN_RETRY_S = 45
+LOGIN_GIVE_UP = 3                   # failed logins in a row -> pause (a wrong password, a locked account)
+LOGIN_PAUSE_S = 1800
+
+
+def load_login():
+    try:
+        d = json.loads(LOGIN_FILE.read_text(encoding="utf-8"))
+        return {"user": d.get("user", ""), "password": d.get("password", ""), "enabled": bool(d.get("enabled"))}
+    except (OSError, ValueError):
+        return {"user": "", "password": "", "enabled": False}
+
+
+def auto_login():
+    """Whenever the game sits at its login screen and auto login is on: log in (the client's own
+    login action, via the add-on). Covers the first start, a crash restart and a disconnect."""
+    from lumberjack.core.gamestate import GameState, GameStateError
+    log = logging.getLogger("login")
+    gs = GameState()
+    last_try, fails, paused_until = 0.0, 0, 0.0
+    while True:
+        time.sleep(5)
+        cfg = load_login()
+        if not (cfg["enabled"] and cfg["user"] and cfg["password"]) or time.monotonic() < paused_until:
+            continue
+        try:
+            if gs._q("tick").get("state") != 10 or time.monotonic() - last_try < LOGIN_RETRY_S:
+                continue
+            r = gs.login(cfg["user"], cfg["password"])
+        except GameStateError:
+            continue                          # no game / an add-on without login: nothing to do
+        if not r.get("ok"):
+            continue
+        last_try = time.monotonic()
+        log.info("Logging in as %s", cfg["user"])
+        end = time.monotonic() + 30
+        state = 10
+        while time.monotonic() < end:
+            time.sleep(1)
+            try:
+                state = gs.login_status().get("state")
+            except GameStateError:
+                break
+            if state == 30:
+                break
+        if state == 30:
+            log.info("Logged in")
+            fails = 0
+            continue
+        fails += 1
+        log.warning("Login didn't go through (%d of %d)", fails, LOGIN_GIVE_UP)
+        if fails >= LOGIN_GIVE_UP:
+            log.warning("Auto login paused for %d min - check the username and password (Tools tab)",
+                        LOGIN_PAUSE_S // 60)
+            paused_until, fails = time.monotonic() + LOGIN_PAUSE_S, 0
+
+
+class LoginIn(BaseModel):
+    user: str = ""
+    password: str | None = None       # None = keep the saved one
+    enabled: bool = False
+
+
+@app.get("/api/login")
+def login_get():
+    c = load_login()
+    return {"user": c["user"], "enabled": c["enabled"], "has_password": bool(c["password"])}
+
+
+@app.post("/api/login")
+def login_set(li: LoginIn):
+    c = load_login()
+    c.update(user=li.user.strip(), enabled=li.enabled)
+    if li.password:
+        c["password"] = li.password
+    LOGIN_FILE.parent.mkdir(parents=True, exist_ok=True)
+    LOGIN_FILE.write_text(json.dumps(c), encoding="utf-8")
+    return {"ok": True, "has_password": bool(c["password"])}
+
+
 def resume_plan():
     """The panel closed while a plan ran (an update, a crash, the PC slept): start it again once
     the game answers. Stopping the plan (Stop / F12 / it finished) removes the marker."""
@@ -1973,6 +2075,7 @@ def main():
     print(f"Grindstone control panel {version.label()}: http://127.0.0.1:{PORT}")
     resume_plan()
     threading.Thread(target=freeze_watchdog, name="freeze-watchdog", daemon=True).start()
+    threading.Thread(target=auto_login, name="auto-login", daemon=True).start()
     uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="warning")
 
 

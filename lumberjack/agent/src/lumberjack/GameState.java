@@ -40,6 +40,8 @@ final class GameState {
             case "camera": return camera(arg);
             case "minimap": return minimap();
             case "widgets": return widgets(arg);
+            case "login": return login(arg);
+            case "loginstatus": return loginStatus();
             case "tick": return "{\"loop\":" + statInt("rt4.client", "loop") + ",\"state\":" + statInt("rt4.client", "gameState") + "}";
             default: throw new IllegalArgumentException("unknown state '" + what + "'");
         }
@@ -589,5 +591,32 @@ final class GameState {
         java.nio.ByteBuffer buf = java.nio.ByteBuffer.allocate(w * h * 4).order(java.nio.ByteOrder.LITTLE_ENDIAN);
         buf.asIntBuffer().put(px, 0, w * h);
         return new Object[]{w, h, buf.array()};
+    }
+
+    // ---- logging in (the login screen's own action, as its Login button does) ------------
+    /** arg: base64(username) + " " + base64(password). Only at an idle login screen - the same
+     *  checks the client's login script makes before LoginManager.startLogin. */
+    private static String login(String arg) throws Exception {
+        String[] p = arg == null ? new String[0] : arg.trim().split(" ");
+        if (p.length != 2) return "{\"ok\":false,\"why\":\"bad arguments\"}";
+        java.util.Base64.Decoder b64 = java.util.Base64.getDecoder();
+        String user = new String(b64.decode(p[0]), "UTF-8"), pass = new String(b64.decode(p[1]), "UTF-8");
+        int state = statInt("rt4.client", "gameState");
+        if (state == 30) return "{\"ok\":false,\"why\":\"already logged in\"}";
+        boolean idle = state == 10 && statInt("rt4.LoginManager", "hopStep") == 0
+            && statInt("rt4.LoginManager", "step") == 0 && statInt("rt4.CreateManager", "step") == 0
+            && statInt("rt4.WorldList", "step") == 0;
+        if (!idle) return "{\"ok\":false,\"why\":\"not at an idle login screen (state " + state + ")\"}";
+        Class<?> js = cls("rt4.JagString");
+        Method parse = js.getMethod("parse", String.class);
+        Method start = cls("rt4.LoginManager").getMethod("startLogin", js, js, int.class);
+        start.invoke(null, parse.invoke(null, user), parse.invoke(null, pass), 0);
+        return "{\"ok\":true}";
+    }
+
+    /** {state, step, reply}: how a login attempt is going (reply: the server's answer code). */
+    static String loginStatus() throws Exception {
+        return "{\"state\":" + statInt("rt4.client", "gameState") + ",\"step\":" + statInt("rt4.LoginManager", "step")
+            + ",\"reply\":" + statInt("rt4.LoginManager", "reply") + "}";
     }
 }

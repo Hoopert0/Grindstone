@@ -219,16 +219,39 @@ def rename_old_icon():
                 old.rename(new)
         except OSError:
             pass
-        done = savesync.REPO / "lumberjack" / "configs" / "icon_set_v2"     # (v2: the anvil icon)
-        if new.exists() and ICON.exists() and not done.exists():
-            ps = (f"$s=(New-Object -ComObject WScript.Shell).CreateShortcut('{new}');"
-                  f"$s.IconLocation='{ICON}';$s.Save()")
-            try:
-                if procs.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True, timeout=20).returncode == 0:
-                    done.parent.mkdir(parents=True, exist_ok=True)
-                    done.write_text("1")
-            except Exception:
-                pass
+    set_shortcut_icons()
+
+
+def set_shortcut_icons():
+    """Give every shortcut that starts Grindstone (desktop, OneDrive desktop, Start menu, pinned to
+    the taskbar) the Grindstone icon, then refresh Windows' icon cache. Once per icon (a marker)."""
+    done = savesync.REPO / "lumberjack" / "configs" / "icon_set_v3"
+    if done.exists() or not ICON.exists():
+        return
+    bat = str(savesync.REPO / "lumberjack.bat").lower()
+    ps = r"""
+$sh = New-Object -ComObject WScript.Shell
+$dirs = @([Environment]::GetFolderPath('Desktop'), "$env:USERPROFILE\Desktop", "$env:USERPROFILE\OneDrive\Desktop",
+          [Environment]::GetFolderPath('StartMenu'), [Environment]::GetFolderPath('Programs'),
+          "$env:APPDATA\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar")
+$n = 0
+foreach ($d in $dirs | Select-Object -Unique) {
+  if (-not (Test-Path $d)) { continue }
+  Get-ChildItem $d -Filter *.lnk -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+    $s = $sh.CreateShortcut($_.FullName)
+    if ($s.TargetPath -and $s.TargetPath.ToLower() -eq '__BAT__') { $s.IconLocation = '__ICON__'; $s.Save(); $n++ }
+  }
+}
+ie4uinit.exe -show 2>$null
+Write-Output $n
+""".replace("__BAT__", bat.replace("'", "''")).replace("__ICON__", str(ICON).replace("'", "''"))
+    try:
+        r = procs.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True, text=True, timeout=60)
+        if r.returncode == 0:
+            done.parent.mkdir(parents=True, exist_ok=True)
+            done.write_text((r.stdout or "").strip() or "0")
+    except Exception:
+        pass
 
 
 def update_first():

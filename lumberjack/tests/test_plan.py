@@ -469,3 +469,47 @@ def test_autopilot_runs_its_picks(monkeypatch):
     assert steps[0] == ("combat", 10, "auto") and steps[1] == ("prayer", 43, None)
     assert seen_opts[0]["when_full"] == "drop" and seen_opts[0]["loot"] == []
     assert steps[2][0] == "magic" and ctl.plan_info is None
+
+
+def test_login_settings_keep_the_password(monkeypatch, tmp_path):
+    monkeypatch.setattr(server, "LOGIN_FILE", tmp_path / "login.json")
+    server.login_set(server.LoginIn(user="hero", password="secret", enabled=True))
+    assert server.login_get() == {"user": "hero", "enabled": True, "has_password": True}
+    server.login_set(server.LoginIn(user="hero", password=None, enabled=False))   # untouched password
+    assert server.load_login()["password"] == "secret" and not server.load_login()["enabled"]
+
+
+def test_auto_login_logs_in_at_the_login_screen(monkeypatch, tmp_path):
+    from lumberjack.core import gamestate
+    monkeypatch.setattr(server, "LOGIN_FILE", tmp_path / "login.json")
+    server.login_set(server.LoginIn(user="hero", password="secret", enabled=True))
+    state = {"s": 10, "calls": []}
+
+    def q(self, cmd):
+        if cmd == "tick":
+            return {"loop": 1, "state": state["s"]}
+        if cmd.startswith("login "):
+            state["calls"].append(cmd)
+            state["s"] = 30
+            return {"ok": True}
+        if cmd == "loginstatus":
+            return {"state": state["s"]}
+        raise AssertionError(cmd)
+    monkeypatch.setattr(gamestate.GameState, "_q", q)
+    ticks = {"n": 0}
+
+    def sleep(s):
+        ticks["n"] += 1
+        if ticks["n"] > 6:
+            raise Stop
+    monkeypatch.setattr(server.time, "sleep", sleep)
+    with __import__("pytest").raises(Stop):
+        server.auto_login()
+    import base64
+    assert len(state["calls"]) == 1
+    _, u, p = state["calls"][0].split(" ")
+    assert base64.b64decode(u).decode() == "hero" and base64.b64decode(p).decode() == "secret"
+
+
+class Stop(Exception):
+    pass
