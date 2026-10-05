@@ -59,11 +59,22 @@ def use_option(ctx, gs, points, verb, subject, settle=(0.08, 0.14)):
     return None
 
 
+SPREAD_PX = 26           # per extra tile of a big object: how far around its point to also try
+
+
 def points_for(thing):
-    """Hover points for a located NPC/loc/item: between ground and body first."""
+    """Hover points for a located NPC/loc/item: between ground and body first. A big object
+    (an altar, anvil, patch, obstacle - "size" over one tile) gets a spread around those too:
+    its reported point can sit on the floor next to the model ("Walk here")."""
     (gx, gy) = thing["screen"]
     (bx, by) = thing.get("body", thing["screen"])
-    return [((gx + bx) // 2, (gy + by) // 2), (gx, gy - 6), (bx, by), (gx, gy)]
+    pts = [((gx + bx) // 2, (gy + by) // 2), (gx, gy - 6), (bx, by), (gx, gy)]
+    size = max(thing.get("size") or [1])
+    if size > 1:
+        r = SPREAD_PX * min(size - 1, 2)
+        cx, cy = (gx + bx) // 2, (gy + by) // 2
+        pts += [(cx + dx, cy + dy) for dy in (-r, 0, r) for dx in (-r, 0, r) if (dx, dy) != (0, 0)]
+    return pts
 
 
 def walk_toward(ctx, me_tile, tile, frame=None):

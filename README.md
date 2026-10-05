@@ -120,9 +120,10 @@ variable to its folder before running setup.
 ## Updates
 
 Updates are automatic. Every time you start Grindstone it downloads the newest version first.
-While it's running, the panel shows **⬆ Update to vN** when a new version is out - press it
-with the bot stopped and the panel restarts on the new version. A plan can also update itself
-between steps (Plan tab → *Update between steps*).
+While the bot is stopped, the panel takes a new version by itself (within about 10 minutes) and
+restarts on it; you can also press **⬆ Update to vN**. Autopilot updates itself between skills,
+and a plan can too (Plan tab → *Update between steps*) - either carries on after the restart. When
+the game's add-on changed, restart the game with the Grindstone icon when convenient.
 
 What your PC learned in game is always kept. If you've edited the code yourself, the update is
 skipped and the panel tells you which files are in the way.

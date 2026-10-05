@@ -750,6 +750,7 @@ class BotController:
             # only Controls' "Stop after" limits it - not the Plan tab's hours (that's for plans)
             p = load_plan().model_copy(update={"autopilot": True, "target": s.autopilot_target,
                                                "skip": s.autopilot_skip, "steps": [],
+                                               "auto_update": True, "resume": True,   # keeps itself current
                                                "max_hours": s.max_minutes / 60 if s.max_minutes else None})
             return self.start_plan(p)
         err = task_problem(s)
@@ -1757,6 +1758,43 @@ def update_now():
     return {"ok": True, "restarting": True, "message": msg}
 
 
+IDLE_UPDATE_EVERY_S = 600
+IDLE_FOR_S = 120                       # nothing running this long before an idle update
+
+
+def idle_updater():
+    """While the bot isn't running, take a newer version from GitHub by itself (the panel restarts
+    on it - nothing to interrupt), so a fix is there the next time Start is pressed. A running
+    plan/Autopilot updates between steps instead."""
+    from lumberjack import updater
+    log = logging.getLogger("panel")
+    idle_since = time.monotonic()
+    while True:
+        time.sleep(30)
+        if ctl.running or manual.busy or rec.running:
+            idle_since = time.monotonic()
+            continue
+        if time.monotonic() - idle_since < IDLE_FOR_S:
+            continue
+        st = version.status()                # (checks GitHub in the background, at most every few min)
+        if not st.get("update"):
+            time.sleep(IDLE_UPDATE_EVERY_S - 30)
+            continue
+        log.info("A newer version is on GitHub (v%s) and the bot is idle - updating", st.get("latest"))
+        r = updater.update()
+        behind = (version.RUNNING[0] or 0) < (version.code_version()[0] or 0)   # pulled but not running it
+        if not r["ok"] or not (r["updated"] or behind):
+            log.warning("Idle update didn't go through: %s", r["message"])
+            time.sleep(IDLE_UPDATE_EVERY_S)
+            continue
+        if r["addon_changed"]:
+            log.warning("The game add-on changed too - close the game and start it with the Grindstone icon "
+                        "when convenient")
+        log.info("Updated to v%s - restarting the panel", r["to"] or version.code_version()[0])
+        restart_panel_process()
+        return
+
+
 @app.get("/api/running")
 def running_get():
     """For the game watcher: is a bot or plan running (so a closed game should be restarted)?"""
@@ -2418,6 +2456,7 @@ def main():
     resume_plan()
     threading.Thread(target=freeze_watchdog, name="freeze-watchdog", daemon=True).start()
     threading.Thread(target=auto_login, name="auto-login", daemon=True).start()
+    threading.Thread(target=idle_updater, name="idle-updater", daemon=True).start()
     uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="warning")
 
 
