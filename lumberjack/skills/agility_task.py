@@ -44,7 +44,28 @@ GNOME = {
          "at": box(2480, 3428, 2492, 3433, 0)},
     ],
 }
-COURSES = [GNOME]
+# Barbarian Outpost (level 35): the server's BarbarianOutpostCourse. Its door wants the Barcrawl
+# card - the teleport starts us inside. A slip drops us in a pit or the water: off the course,
+# so the runner teleports back to the start.
+BARBARIAN = {
+    "name": "Barbarian Outpost course",
+    "level": 35,
+    "start": (2552, 3556, 0),
+    "obstacles": [
+        {"ids": {2282}, "op": "Swing-on", "area": box(2542, 3552, 2560, 3562, 0)},       # rope swing
+        {"ids": {2294}, "op": "Walk-across", "area": box(2546, 3544, 2556, 3551, 0)},    # log balance
+        {"ids": {20211}, "op": "Climb-over", "area": box(2538, 3543, 2545, 3550, 0)},    # net up
+        {"ids": {2302}, "op": "Walk-across", "area": box(2535, 3540, 2545, 3555, 1)},    # ledge
+        {"names": {"Ladder"}, "op": "Climb-down", "area": box(2525, 3540, 2534, 3555, 1)},
+        {"ids": {1948}, "op": "Climb-over", "area": box(2525, 3540, 2535, 3558, 0),      # the 3 low walls,
+         "at": box(2536, 3553, 2536, 3553, 0)},                                          # west to east
+        {"ids": {1948}, "op": "Climb-over", "area": box(2537, 3551, 2538, 3556, 0),
+         "at": box(2539, 3553, 2539, 3553, 0)},
+        {"ids": {1948}, "op": "Climb-over", "area": box(2540, 3551, 2541, 3556, 0),
+         "at": box(2542, 3553, 2542, 3553, 0)},
+    ],
+}
+COURSES = [GNOME, BARBARIAN]
 
 
 def best_course(level):
@@ -131,7 +152,9 @@ class Agility(BotBase):
         from lumberjack.core import interact
         plane = me.get("plane", 0)
         found = [l for l in self.gs.locs(OBSTACLE_RADIUS)
-                 if l.get("id") in o["ids"] and (o.get("at") is None or inside(o["at"], l["tile"], plane))]
+                 if (l.get("id") in o.get("ids", ()) or l["name"] in o.get("names", ()))
+                 and o["op"].lower() in [op.lower() for op in (l.get("ops") or [o["op"]])]
+                 and (o.get("at") is None or inside(o["at"], l["tile"], plane))]
         if not found:
             self.sleep(1.0)
             return

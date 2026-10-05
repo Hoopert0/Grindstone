@@ -151,7 +151,9 @@ class FishCooker(Fisher):
     def cook_load(self):
         self.state = "sorting the catch"
         inv = cooking.sort_backpack(self.ctx, self.keep_slots)
-        raw, logs = inv["raw"], inv["log"]
+        raw, logs = self.cookable(inv["raw"]), inv["log"]
+        if inv["raw"] and not raw:
+            return                                # all above our Cooking level: dropped with the load
         if not raw:
             self.log.warning("No raw fish recognised in the backpack - learn their names "
                              "(Fishing > Learn item)")
@@ -178,6 +180,20 @@ class FishCooker(Fisher):
         from lumberjack.core import backpack
         if not mouseover.available("eat") and backpack.source() is None:
             cooking.learn_eat(self.ctx, [i for i in start_raw if i not in raw])
+
+    def cookable(self, raw):
+        """The raw fish our Cooking level can cook (game data; unknown fish are tried). The rest
+        is dropped with the load - no fires lit and stalls spent on lobsters at Cooking 30."""
+        from lumberjack.core import backpack, gamestate
+        from lumberjack.skills.cooking_task import CATCH_LEVELS
+        inv, lv = backpack.slots(), (gamestate.skill("cooking") or {}).get("base")
+        if inv is None or lv is None:
+            return raw
+        ok = [i for i in raw if CATCH_LEVELS.get(inv[i]["key"], 0) <= lv]
+        if len(ok) < len(raw):
+            too = sorted({inv[i]["key"].replace("raw_", "") for i in raw if i not in ok})
+            self.log.info("Cooking %d can't cook %s yet - dropping those raw", lv, "/".join(too))
+        return ok
 
     def make_fire(self, logs):
         """Light a fire from a spare log (chopping one first if needed). Returns the logs

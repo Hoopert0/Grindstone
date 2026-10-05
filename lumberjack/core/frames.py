@@ -48,9 +48,9 @@ def grab():
             head = _file.readline().decode("ascii", "replace").split()
             if not head or head[0] != "ok":
                 why = " ".join(head)
-                last_error = ("the game is in HD mode - the add-on can only send frames in SD mode "
-                              "(game settings › Graphics › SD / Safe mode)" if "no frame buffer" in why
-                              else f"the add-on answered: {why or 'nothing'}")
+                last_error = ("the game has no picture to send (switching graphics mode? An add-on from "
+                              "before HD support also says this - restart the game with the Grindstone icon)"
+                              if "no frame buffer" in why else f"the add-on answered: {why or 'nothing'}")
                 if head and "unknown command" in " ".join(head):
                     _off_until = time.monotonic() + RETRY_S       # old add-on: use the screen grab
                     _close()

@@ -54,6 +54,7 @@ TASK_TOOLS = {
     "smithing": {"hammer"},
     "thieving": {"coins"},
     "combat": {"coins"},
+    "slayer": {"coins"},
 }
 
 
@@ -154,5 +155,5 @@ def needed_for(k, task):
     if k.endswith("pickaxe"):
         return task == "mining"
     if kind(k) == "cooked":
-        return task in ("combat", "ranged", "thieving", "magic")
+        return task in ("combat", "ranged", "slayer", "thieving", "magic")
     return False

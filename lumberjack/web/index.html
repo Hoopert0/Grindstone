@@ -193,6 +193,7 @@
           <label class="opt"><input type="radio" name="task" value="ranged"><span>🎯 Ranged</span></label>
           <label class="opt"><input type="radio" name="task" value="magic"><span>🪄 Magic</span></label>
           <label class="opt"><input type="radio" name="task" value="thieving"><span>🧤 Thieving</span></label>
+          <label class="opt"><input type="radio" name="task" value="slayer"><span>💀 Slayer</span></label>
         </div>
         <div class="group">Making</div>
         <div class="grid3">
@@ -466,7 +467,7 @@
       <div id="plansteps"></div>
       <div class="row" style="margin-top:6px">
         <button id="planadd" type="button">+ Add step</button>
-        <button id="planstarter" type="button" title="Every skill: woodcutting, fishing, mining, combat, thieving, agility, hunter 30 min each at the best spot for your level; firemaking, cooking, prayer, fletching, crafting, herblore, runecrafting 20 min each (spawned supplies), at the best spot for your level, lowest skill first, looping">★ Starter plan</button>
+        <button id="planstarter" type="button" title="Every skill: woodcutting, fishing, mining, combat, thieving, slayer, agility, hunter 30 min each at the best spot for your level; firemaking, cooking, prayer, fletching, crafting, herblore, runecrafting 20 min each (spawned supplies), at the best spot for your level, lowest skill first, looping">★ Starter plan</button>
       </div>
       <div class="field" style="margin-top:10px">
         <div class="radios">
@@ -880,7 +881,7 @@ const TASKS = [["woodcutting", "🪓 Woodcutting"], ["fishing", "🎣 Fishing"],
                ["combat", "⚔️ Combat"], ["firemaking", "🔥 Firemaking"], ["cooking", "🍳 Cooking"],
                ["prayer", "🦴 Prayer"], ["fletching", "🏹 Fletching"], ["crafting", "💎 Crafting"],
                ["thieving", "🧤 Thieving"], ["smithing", "🔨 Smithing"], ["ranged", "🎯 Ranged"],
-               ["magic", "🪄 Magic"], ["herblore", "🌿 Herblore"], ["runecrafting", "🔮 Runecrafting"], ["agility", "🏃 Agility"], ["hunter", "🪤 Hunter"]];
+               ["magic", "🪄 Magic"], ["herblore", "🌿 Herblore"], ["runecrafting", "🔮 Runecrafting"], ["agility", "🏃 Agility"], ["hunter", "🪤 Hunter"], ["slayer", "💀 Slayer"]];
 let plan = { steps: [], loop: true, teleport: true }, places = {};
 
 async function loadPlan() {
@@ -993,9 +994,9 @@ function showTask() {
   $("fish-card").hidden = task !== "fishing";
   $("wc-card").hidden = task !== "woodcutting";
   $("mine-card").hidden = task !== "mining";
-  $("combat-card").hidden = !["combat", "ranged"].includes(task);   // ranged uses the same targets/food
+  $("combat-card").hidden = !["combat", "ranged", "slayer"].includes(task);   // ranged uses the same targets/food
   $("max_logs").placeholder = { fishing: "fish", firemaking: "fires", mining: "ore", combat: "kills", cooking: "fish",
-    prayer: "bones", fletching: "logs", crafting: "gems", thieving: "steals", smithing: "bars", ranged: "kills", magic: "casts", herblore: "potions", runecrafting: "essence", agility: "laps", hunter: "catches" }[task] || "logs";
+    prayer: "bones", fletching: "logs", crafting: "gems", thieving: "steals", smithing: "bars", ranged: "kills", magic: "casts", herblore: "potions", runecrafting: "essence", agility: "laps", hunter: "catches", slayer: "kills" }[task] || "logs";
 }
 document.querySelectorAll("input[name=task]").forEach(el => el.addEventListener("change", () => { showTask(); save(); }));
 
@@ -1113,7 +1114,7 @@ function renderApSkip(skip) {
 $("planstarter").onclick = () => {
   if (plan.steps.length && !confirm("Replace the plan's steps with the starter plan?")) return;
   plan = planFromUI();
-  plan.steps = ["woodcutting", "fishing", "mining", "combat", "ranged", "magic", "thieving", "smithing"].map(task => ({ task, minutes: 30, level: null, place: "auto", options: {} }))
+  plan.steps = ["woodcutting", "fishing", "mining", "combat", "ranged", "magic", "thieving", "smithing", "slayer"].map(task => ({ task, minutes: 30, level: null, place: "auto", options: {} }))
     .concat(["agility", "hunter"].map(task => ({ task, minutes: 30, level: null, place: null, options: {} })))   // they teleport themselves
     .concat(["firemaking", "cooking", "prayer", "fletching", "crafting", "herblore", "runecrafting"].map(task => ({ task, minutes: 20, level: null, place: null, options: {} })));   // spawn their supplies
   plan.loop = true; plan.order = "lowest";
@@ -1211,7 +1212,7 @@ function connect() {
       firemaking: ["fires", "fires lit"], cooking: ["fish", "fish cooked"], prayer: ["bones", "bones buried"],
       fletching: ["logs", "logs fletched"], crafting: ["gems", "gems cut"], smithing: ["bars", "bars smithed"],
       herblore: ["potions", "potions made"], runecrafting: ["essence", "essence crafted"],
-      agility: ["laps", "laps"], hunter: ["catches", "caught"] };
+      agility: ["laps", "laps"], hunter: ["catches", "caught"], slayer: ["kills", "kills"] };
     const [unit, unitLabel] = UNITS[task] || ["logs", "logs cut"];
     $("l-logs").textContent = unitLabel;
     $("s-banked").parentElement.hidden = !st.banked;          // only once they happen
@@ -1219,7 +1220,7 @@ function connect() {
     $("l-rate").textContent = `${unit} / hour`;
     $("t-cooked").hidden = $("t-burnt").hidden = !fishing;
     $("t-fletched").hidden = task !== "woodcutting" && task !== "bot";
-    $("t-eaten").hidden = task !== "combat";
+    $("t-eaten").hidden = !["combat", "slayer"].includes(task);
     $("s-eaten").textContent = st.eaten ?? 0;
     const lv = st.levels || {}, names = { woodcutting: "WC", firemaking: "FM", fletching: "FL", fishing: "FI", cooking: "CK",
                                  mining: "MI", attack: "AT", strength: "ST", defence: "DE", hitpoints: "HP" };

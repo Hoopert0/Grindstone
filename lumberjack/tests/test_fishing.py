@@ -202,3 +202,16 @@ def test_harpoon_picks_the_right_spot_for_the_level():
     assert harpoon_spots([sword, shark], "harpoon", 80) == [shark]
     assert harpoon_spots([sword], "harpoon", 80) == [sword]
     assert harpoon_spots([shark, sword], "cage", 60) == [shark, sword]
+
+
+def test_fish_cook_only_cooks_what_the_level_can(monkeypatch):
+    from lumberjack.core import backpack, gamestate
+    from lumberjack.skills.fish_cook import FishCooker
+    inv = [{"id": 1, "key": k} for k in ("raw_lobster", "raw_tuna", "raw_swordfish", "raw_mystery")]
+    monkeypatch.setattr(backpack, "slots", lambda: inv)
+    monkeypatch.setattr(gamestate, "skill", lambda name: {"base": 40})
+    f = FishCooker.__new__(FishCooker)
+    f.log = __import__("logging").getLogger("t")
+    assert f.cookable([0, 1, 2, 3]) == [0, 1, 3]          # swordfish needs 45; unknown fish is tried
+    monkeypatch.setattr(backpack, "slots", lambda: None)
+    assert f.cookable([0, 1, 2]) == [0, 1, 2]             # no game data: try them all

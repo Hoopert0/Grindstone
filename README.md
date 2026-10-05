@@ -25,7 +25,7 @@ every skill for hours, moving to better spots and better gear as you level up.
 
 ## Features
 
-- **17 skills, one panel.** Gathering, combat and artisan skills, each with sensible defaults.
+- **18 skills, one panel.** Gathering, combat and artisan skills, each with sensible defaults.
 - **🤖 Autopilot.** One button trains the whole account by itself - even a brand-new one in
   Lumbridge: combat basics first, quick Prayer, then always the lowest skill up to its next
   milestone, at the best spot for the level.
@@ -56,7 +56,8 @@ every skill for hours, moving to better spots and better gear as you level up.
 | 🎯 | Ranged | Combat with the best shortbow for your level and its arrows (spawned, worn) |
 | 🪄 | Magic | Wind Strike → Low Alchemy → Varrock/Camelot Teleport → High Alchemy |
 | 🧤 | Thieving | Pickpockets men → Al Kharid warriors → guards → knights → paladins → heroes; handles stuns, eats |
-| 🏃 | Agility | Laps of the Gnome Stronghold course; teleports back to the start when lost |
+| 💀 | Slayer | Melee on the route's monsters with a matching Slayer task, set and renewed by itself |
+| 🏃 | Agility | Laps of the Gnome Stronghold course, the Barbarian Outpost course from 35; teleports back to the start when lost |
 | 🪤 | Hunter | Bird snares, then box traps for chinchompas, as many traps as the level allows |
 | 🔥 | Firemaking | Spawns the best logs you can light and burns them (or uses banked logs) |
 | 🍳 | Cooking | Spawns raw fish for your level and cooks them on its own fire |

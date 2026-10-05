@@ -25,9 +25,9 @@ def grab_with(monkeypatch, reply):
     return frames.grab()
 
 
-def test_hd_mode_is_named(monkeypatch):
+def test_no_picture_is_named(monkeypatch):
     assert grab_with(monkeypatch, b"err java.lang.IllegalStateException: no frame buffer (HD mode?)\n") is None
-    assert "HD mode" in frames.last_error
+    assert "no picture" in frames.last_error and "restart the game" in frames.last_error
 
 
 def test_wrong_size_is_named_and_a_good_frame_clears_it(monkeypatch):

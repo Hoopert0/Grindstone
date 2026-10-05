@@ -78,6 +78,15 @@ ROUTES = {
         (60, "★ Stronghold ankou", {"targets": ["ankou"]}),
         (75, "★ Fire giants", {"targets": ["fire_giant"]}),
     ],
+    "slayer": [                        # melee on a Slayer task; tiers by Slayer level (it trails combat)
+        (1, "★ Lumbridge chickens", {"targets": ["chicken"]}),
+        (5, "★ Lumbridge cows", {"targets": ["cow"]}),
+        (10, "★ Lumbridge goblins", {"targets": ["goblin"]}),
+        (25, "★ Edgeville hill giants", {"targets": ["hill_giant"]}),
+        (40, "★ Ice warriors", {"targets": ["ice_warrior"]}),
+        (55, "★ Stronghold ankou", {"targets": ["ankou"]}),
+        (70, "★ Fire giants", {"targets": ["fire_giant"]}),
+    ],
     "smithing": [
         (1, "★ Varrock anvil", {}),
     ],
@@ -139,7 +148,7 @@ def find_targets(gs, task, opts, radius):
         return [n["tile"] for n in gs.npcs("Fishing spot") if verb in n["ops"] and n["dist"] <= radius]
     if task == "smithing":
         return [l["tile"] for l in gs.locs(radius, "anvil") if l["name"] == "Anvil"]
-    if task in ("combat", "ranged", "thieving"):
+    if task in ("combat", "ranged", "slayer", "thieving"):
         want, op = (set(opts.get("targets") or []), "Attack") if task != "thieving" else \
             (set(opts.get("thieve") or []), "Pickpocket")
         return [n["tile"] for n in gs.npcs() if key(n["name"]) in want and op in n["ops"]

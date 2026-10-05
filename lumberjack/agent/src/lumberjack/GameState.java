@@ -640,12 +640,26 @@ final class GameState {
     /** {width, height, bytes}: the software renderer's frame buffer as B,G,R,0 bytes per pixel. */
     static Object[] frame() throws Exception {
         Object fb = stat("rt4.SoftwareRaster", "frameBuffer");
-        if (fb == null) throw new IllegalStateException("no frame buffer (HD mode?)");
+        if (fb == null) return glFrame();
         int[] px = (int[]) get(fb, "pixels");
         int w = getInt(fb, "width"), h = getInt(fb, "height");
         if (px == null || w <= 0 || h <= 0 || px.length < w * h) throw new IllegalStateException("frame not ready");
         java.nio.ByteBuffer buf = java.nio.ByteBuffer.allocate(w * h * 4).order(java.nio.ByteOrder.LITTLE_ENDIAN);
         buf.asIntBuffer().put(px, 0, w * h);
+        return new Object[]{w, h, buf.array()};
+    }
+
+    /** HD mode: the client reads its own picture back after every frame (GlRenderer.pixelData,
+     *  bottom row first) - copy that, top row first. Same pixel layout as the software buffer. */
+    private static Object[] glFrame() throws Exception {
+        Class<?> gl = cls("rt4.GlRenderer");
+        if (!(Boolean) field(gl, "enabled").get(null)) throw new IllegalStateException("no frame buffer (HD mode?)");
+        int[] px = (int[]) field(gl, "pixelData").get(null);
+        int w = statInt("rt4.GlRenderer", "canvasWidth"), h = statInt("rt4.GlRenderer", "canvasHeight");
+        if (px == null || w <= 0 || h <= 0 || px.length < w * h) throw new IllegalStateException("HD frame not ready");
+        java.nio.ByteBuffer buf = java.nio.ByteBuffer.allocate(w * h * 4).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        java.nio.IntBuffer ib = buf.asIntBuffer();
+        for (int y = h - 1; y >= 0; y--) ib.put(px, y * w, w);
         return new Object[]{w, h, buf.array()};
     }
 

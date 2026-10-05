@@ -15,6 +15,9 @@ from lumberjack.skills.base import BotBase, StopBot
 # spawnable raw fish -> Cooking level (items.CATALOG has their ids)
 RAW_LEVELS = {"raw_shrimps": 1, "raw_sardine": 1, "raw_herring": 5, "raw_trout": 15, "raw_pike": 20,
               "raw_salmon": 25, "raw_tuna": 30, "raw_lobster": 40, "raw_swordfish": 45}
+# caught but not spawned: only their Cooking level matters (fishing cooks its catch)
+CATCH_LEVELS = {**RAW_LEVELS, "raw_anchovies": 1, "raw_mackerel": 10, "raw_cod": 18, "raw_bass": 43,
+                "raw_shark": 80}
 FIRE_LOGS = 3              # logs carried for fires each load
 MAX_FIRE_TRIES = 5         # failed lights in a row before giving up
 MAX_STALLS = 4             # cook rounds in a row that cooked nothing -> drop the rest, start over

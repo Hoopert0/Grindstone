@@ -167,12 +167,12 @@ RESUME_WAIT_S = 1800                  # after a panel restart, wait this long fo
 # the skills Grindstone can train (autopilot's progress counts these)
 TRAINED_SKILLS = ["attack", "strength", "defence", "hitpoints", "ranged", "prayer", "magic", "cooking",
                   "woodcutting", "fletching", "fishing", "firemaking", "crafting", "smithing", "mining", "herblore",
-                  "runecrafting", "agility", "hunter", "thieving"]
+                  "runecrafting", "agility", "hunter", "slayer", "thieving"]
 TASK_LEVEL_SKILLS = {"woodcutting": ["woodcutting"], "firemaking": ["firemaking"], "fishing": ["fishing"],
                      "mining": ["mining"], "combat": ["attack", "strength", "defence"], "cooking": ["cooking"],
                      "prayer": ["prayer"], "fletching": ["fletching"], "crafting": ["crafting"],
                      "herblore": ["herblore"], "runecrafting": ["runecrafting"], "agility": ["agility"],
-                     "hunter": ["hunter"], "thieving": ["thieving"], "smithing": ["smithing"], "ranged": ["ranged"],
+                     "hunter": ["hunter"], "slayer": ["slayer"], "thieving": ["thieving"], "smithing": ["smithing"], "ranged": ["ranged"],
                      "magic": ["magic"]}
 # tasks that spawn their own supplies: need game data + 'Spawn missing tools'
 SPAWN_TASKS = {"cooking": "raw fish", "prayer": "bones", "fletching": "logs and a knife",
@@ -408,8 +408,8 @@ def preflight(s: "Settings"):
     elif s.task == "agility":
         if not _names_from_game():
             errors.append("Agility needs the game's own data (it finds the obstacles in the scene).")
-        fixes.append("Teleports to the Gnome Stronghold course and runs laps; back to the start when it "
-                     "gets lost, back where you were at the end.")
+        fixes.append("Teleports to the Gnome Stronghold course (the Barbarian Outpost course from 35) and runs "
+                     "laps; back to the start when it gets lost or falls, back where you were at the end.")
     elif s.task == "hunter":
         if not (_names_from_game() and s.spawn_tools):
             errors.append("Hunter needs the game's own data and 'Spawn missing tools' (it spawns its traps).")
@@ -425,6 +425,12 @@ def preflight(s: "Settings"):
         fishing_checks(s, errors, fixes, warnings)
     elif s.task == "mining":
         mining_checks(s, errors, fixes, warnings)
+    elif s.task == "slayer":
+        if not (_names_from_game() and s.spawn_tools):
+            errors.append("Slayer needs the game's own data and 'Spawn missing tools' (gear and food).")
+        fixes.append("Fights the training route's monsters for your Slayer level (chickens, cows, goblins, hill "
+                     "giants, ice warriors, ankou, fire giants) with a matching Slayer task set by the admin "
+                     "command, renewed before it runs out. Eats, wears the best gear, trains melee too.")
     elif s.task in ("combat", "ranged"):
         combat_checks(s, errors, fixes, warnings)
         if s.task == "ranged":
@@ -620,6 +626,9 @@ def task_problem(s: Settings):
             f"{s.task.capitalize()} needs the game's own data and 'Spawn missing tools' (it spawns its {SPAWN_TASKS[s.task]})"
     if s.task in ("thieving", "agility"):
         return None if _names_from_game() else f"{s.task.capitalize()} needs the game's own data"
+    if s.task == "slayer":
+        return None if s.spawn_tools and _names_from_game() else \
+            "Slayer needs the game's own data and 'Spawn missing tools'"
     if s.task == "hunter":
         return None if s.spawn_tools and _names_from_game() else \
             "Hunter needs the game's own data and 'Spawn missing tools' (it spawns its traps)"
@@ -658,6 +667,7 @@ TASK_SKILLS = {
     "cooking": ["cooking", "firemaking"], "prayer": ["prayer"], "fletching": ["fletching"],
     "crafting": ["crafting"], "thieving": ["thieving", "hitpoints"], "smithing": ["smithing"],
     "herblore": ["herblore"], "runecrafting": ["runecrafting"], "agility": ["agility"], "hunter": ["hunter"],
+    "slayer": ["slayer", "attack", "strength", "defence", "hitpoints"],
     "ranged": ["ranged", "hitpoints"], "magic": ["magic"],
 }
 
@@ -784,6 +794,15 @@ class BotController:
                         bury_bones=s.bury_bones, max_logs=s.max_logs, map_name=s.map or None, **common)
             f.name = "ranged"
             return f
+        if s.task == "slayer":
+            from lumberjack.core import gamestate
+            from lumberjack.nav import training
+            from lumberjack.skills.slayer_task import SlayerFighter, task_npc
+            targets = s.targets if task_npc(s.targets) else \
+                training.pick("slayer", (gamestate.skill("slayer") or {}).get("base"))[1]["targets"]
+            return SlayerFighter(targets=targets, foods=s.foods, eat_below=s.eat_below / 100, train=s.train,
+                                 spawn_tools=s.spawn_tools, fight_spot=s.fight_spot, loot=s.loot,
+                                 bury_bones=s.bury_bones, max_logs=s.max_logs, map_name=s.map or None, **common)
         if s.task == "combat":
             from lumberjack.skills.combat import Fighter
             return Fighter(targets=s.targets, foods=s.foods, eat_below=s.eat_below / 100, train=s.train,

@@ -464,3 +464,27 @@ def test_fresh_account_food_top_up_makes_room(monkeypatch):
     f.foods = ["lobster"]
     monkeypatch.setattr(backpack, "slots", lambda: [{"id": 1, "key": "lobster"}] * 6 + [{"id": -1, "key": None}] * 22)
     assert f.top_up_food() == 0                                # 6 carried: enough
+
+
+def test_slayer_sets_the_task_and_renews_it(monkeypatch):
+    from lumberjack.skills import slayer_task as S
+    typed = []
+    f = S.SlayerFighter.__new__(S.SlayerFighter)
+    f.targets, f.kills, f.assigned_at, f.gs, f.state = ["hill_giant"], 0, None, object(), ""
+    f.log = __import__("logging").getLogger("t")
+    f.inp = types.SimpleNamespace(move=lambda *a: None, type_text=lambda t, enter=False: typed.append(t))
+    f.sleep = lambda s: None
+    monkeypatch.setattr(combat.Fighter, "check_levels", lambda self, force_style=False: None)
+    f.check_levels(force_style=True)
+    assert typed == ["::setslayertask 117 255"]
+    f.kills = 150
+    f.check_levels()
+    assert len(typed) == 1                       # still plenty left
+    f.kills = 200
+    f.check_levels()
+    assert len(typed) == 2
+    assert S.task_npc(["al-kharid_warrior", "goblin"]) == 100 and S.task_npc(["man"]) is None
+    f.targets = ["man"]
+    f.assigned_at = None
+    with __import__("pytest").raises(Exception, match="Slayer task"):
+        f.check_levels()

@@ -68,9 +68,17 @@ Eats below the set HP% (spawns lobsters when out). Drops junk but keeps coins an
 Route: men & women in Lumbridge (1) → Al Kharid warriors (25) → Varrock guards (40) →
 Ardougne knights (55) → paladins (70) → heroes (80).
 
+### 💀 Slayer · spawns
+Melee on the training route's monsters for your Slayer level, with a matching Slayer task set by
+the admin command (`::setslayertask`, renewed before it runs out), so every kill gives Slayer XP
+as well as combat XP. Gear, food and eating as Combat.
+Route: chickens (1) → cows (5) → goblins (10) → hill giants (25) → ice warriors (40) → ankou (55)
+→ fire giants (70).
+
 ### 🏃 Agility
-Teleports to the Gnome Stronghold course and runs laps: each obstacle is found by its id in the
-scene, and when it gets lost or stuck it teleports back to the start. At the end it teleports
+Teleports to the Gnome Stronghold course (1), or the Barbarian Outpost course from 35, and runs
+laps: each obstacle is found by its id in the scene, and when it gets lost, stuck or falls it
+teleports back to the start. At the end it teleports
 back to where you were.
 
 ### 🪤 Hunter · spawns

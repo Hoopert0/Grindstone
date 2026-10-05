@@ -20,10 +20,11 @@ TASK_SKILL = {"woodcutting": ["woodcutting"], "fishing": ["fishing"], "mining": 
               "combat": ["attack", "strength", "defence"], "ranged": ["ranged"], "magic": ["magic"],
               "thieving": ["thieving"], "firemaking": ["firemaking"], "cooking": ["cooking"],
               "prayer": ["prayer"], "fletching": ["fletching"], "crafting": ["crafting"], "herblore": ["herblore"],
-              "runecrafting": ["runecrafting"], "agility": ["agility"], "hunter": ["hunter"], "smithing": ["smithing"]}
+              "runecrafting": ["runecrafting"], "agility": ["agility"], "hunter": ["hunter"], "slayer": ["slayer"],
+              "smithing": ["smithing"]}
 # faster XP first when levels tie (spawned supplies beat gathering)
 SPEED = ["prayer", "herblore", "runecrafting", "magic", "fletching", "crafting", "cooking", "firemaking", "smithing",
-         "thieving", "hunter", "ranged", "combat", "fishing", "woodcutting", "mining", "agility"]
+         "thieving", "hunter", "ranged", "combat", "slayer", "fishing", "woodcutting", "mining", "agility"]
 COMBAT_BASE = 10
 PRAYER_EARLY = 43
 STEP_MINUTES = 30

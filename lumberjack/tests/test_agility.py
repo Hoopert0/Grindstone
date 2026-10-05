@@ -114,3 +114,23 @@ def test_leave_teleports_back(course, monkeypatch):
     course.tile = (2474, 3437)
     a.leave()
     assert course.tile == (3222, 3218)
+
+
+def test_course_areas_never_overlap_and_landings_lead_on():
+    def overlap(a, b):
+        return a[4] == b[4] and a[0] <= b[2] and b[0] <= a[2] and a[1] <= b[3] and b[1] <= a[3]
+    for c in A.COURSES:
+        obs = c["obstacles"]
+        for i, a in enumerate(obs):
+            for b in obs[i + 1:]:
+                assert not overlap(a["area"], b["area"]), (c["name"], a["op"], b["op"])
+    bar = A.BARBARIAN
+    # the server's landing tiles: each lands in the next obstacle's area
+    lands = [((2551, 3549), 0), ((2541, 3546), 0), ((2540, 3546), 1), ((2532, 3547), 1),
+             ((2532, 3546), 0), ((2537, 3553), 0), ((2540, 3553), 0), ((2543, 3553), 0)]
+    for i, (tile, plane) in enumerate(lands):
+        assert A.next_obstacle(bar, tile, plane)[0] == (i + 1) % len(bar["obstacles"]), (i, tile)
+    assert A.next_obstacle(bar, bar["start"][:2], 0)[0] == 0
+    assert A.next_obstacle(bar, (2545, 3542), 0) == (None, None)       # fell in the water: lost
+    assert A.next_obstacle(bar, (2549, 9951), 0) == (None, None)       # the pit: lost
+    assert A.best_course(34) is A.GNOME and A.best_course(35) is A.BARBARIAN
