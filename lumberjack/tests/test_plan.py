@@ -245,7 +245,7 @@ def test_tidy_banks_what_the_next_task_does_not_use(monkeypatch):
     from lumberjack import actions, bank
     from lumberjack.core import backpack
     names = ["bronze_axe", "small_fishing_net", "bronze_pickaxe", "raw_shrimps", "bones", "cowhide",
-             "tinderbox", "mystery_item"] + [None] * 20
+             "tinderbox", "mystery_item", "bronze_sword", "pot"] + [None] * 18
     monkeypatch.setattr(backpack, "slots", lambda: [{"id": 1 if n else -1, "key": n} for n in names])
     trips, drops = [], []
     monkeypatch.setattr(bank, "gs_bank_trip", lambda ctx, keep_slots=(): trips.append(set(keep_slots)) or True)
@@ -256,7 +256,7 @@ def test_tidy_banks_what_the_next_task_does_not_use(monkeypatch):
     assert trips == [{2}]                                # only the pickaxe stays
     monkeypatch.setattr(bank, "gs_bank_trip", lambda ctx, keep_slots=(): False)
     ctl._tidy_backpack(None, logging.getLogger("t"), "mining")
-    assert drops == [{0, 1, 2, 6, 7}]                    # no bank: drop only products + loot
+    assert drops == [{0, 1, 2, 6, 7}]                    # no bank: drop only products, loot, starter kit
 
 
 def test_resume_marker(monkeypatch, tmp_path):

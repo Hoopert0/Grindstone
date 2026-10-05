@@ -49,7 +49,8 @@ FIGHT_TIMEOUT = 120.0
 COMBAT_GONE_S = 3.0             # no bars/splats for this long (and idle) -> fight over
 KILL_FRAC = 0.15                # target bar seen at or below this before vanishing = a kill
 DEFAULT_FOOD = "lobster"         # food spawned when none is picked (game data + spawn missing tools)
-FOOD_SPAWN = 10                 # food spawned when none is carried (spawn missing tools)
+FOOD_SPAWN = 10                 # food carried after a top-up (spawn missing tools)
+FOOD_MIN = 5                    # fewer than this carried -> top up to FOOD_SPAWN
 DEATH_WAIT = 5.0                # wait this long at most for a dying target to vanish
 LOOT_SETTLE = 1.2               # after a kill, drops appear a tick or two later
 MAX_CANDIDATES = 5
@@ -207,10 +208,7 @@ class Fighter(BotBase):
                 log.info("No food picked - using %s (spawned) and any cooked fish carried",
                          DEFAULT_FOOD.replace("_", " "))
             if self.foods and self.gs and self.spawn_tools:
-                from lumberjack import items
-                spawnable = [f for f in self.foods if f in items.BY_KEY]
-                if spawnable:
-                    items.ensure(self.ctx, lambda k: k in self.foods, spawnable[0], amount=FOOD_SPAWN, log=log)
+                self.top_up_food()                # a fresh account's 2 shrimps + bread aren't enough
             if self.foods:
                 self.scan_food()
             while True:
@@ -264,13 +262,33 @@ class Fighter(BotBase):
         """Out of food: spawn more (game data + 'Spawn missing tools'). True if some arrived."""
         if not (self.gs and self.spawn_tools):
             return False
-        from lumberjack import items
-        spawnable = [f for f in self.foods if f in items.BY_KEY]
-        if not spawnable:
-            return False
-        slot = items.ensure(self.ctx, lambda k: k in self.foods, spawnable[0], amount=FOOD_SPAWN, log=log)
         self.food_slots = None              # rescan on the next eat()
-        return slot is not None
+        return self.top_up_food() > 0
+
+    def top_up_food(self):
+        """Carry at least FOOD_MIN food: spawn up to FOOD_SPAWN, dropping loot and the unused
+        starter kit first if the backpack is too full. Returns how many were spawned."""
+        from lumberjack import items
+        from lumberjack.core import backpack
+        spawnable = [f for f in self.foods if f in items.BY_KEY]
+        inv = backpack.slots()
+        if not spawnable or inv is None:
+            return 0
+        have = sum(1 for s in inv if s["key"] in self.foods)
+        if have >= FOOD_MIN:
+            return 0
+        want = FOOD_SPAWN - have
+        free = sum(1 for s in inv if s["id"] < 0)
+        if free < want:
+            junk = [i for i, s in enumerate(inv) if s["id"] >= 0 and s["key"] not in self.foods
+                    and (backpack.is_product(s["key"]) or s["key"] in backpack.STARTER)]
+            if junk:
+                log.info("Making room for food - dropping %d item(s)", len(junk))
+                actions.drop_known(self.ctx, self.gs, junk[:want - free])
+        log.info("Carrying %d food - spawning %s", have, spawnable[0].replace("_", " "))
+        got = items.fill(self.ctx, spawnable[0], want)
+        self.inp.move(260, 300)
+        return got
 
     def scan_food(self):
         """Remember which slots hold food (by name from the game, else by hovering once)."""

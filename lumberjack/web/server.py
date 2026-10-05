@@ -1109,15 +1109,17 @@ class BotController:
     def _tidy_backpack(self, ctx, log, task=None):
         """Before a task: make room. Near a bank, deposit everything `task` doesn't use - the last
         task's products, loot, other tasks' tools (they're spawned again when needed). Without a
-        bank, drop only products and loot. Unknown items are only ever banked, never dropped."""
+        bank, drop only products, loot and the unused starter kit. Unknown items are only ever
+        banked, never dropped."""
         from lumberjack import actions, bank
         from lumberjack.core import backpack
         inv = backpack.slots()
         if inv is None:
             return
         full = [i for i, s in enumerate(inv) if s["id"] >= 0]
-        products = [i for i in full if backpack.is_product(inv[i]["key"], food=False)]
         spare = [i for i in full if not (task and backpack.needed_for(inv[i]["key"], task))]
+        products = [i for i in full if backpack.is_product(inv[i]["key"], food=False)
+                    or (i in spare and inv[i]["key"] in backpack.STARTER)]
         if not products and len(spare) < TIDY_SPARE:
             return
         keep = set(full) - set(spare if task else products)

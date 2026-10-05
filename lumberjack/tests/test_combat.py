@@ -435,3 +435,32 @@ def test_loot_from_ground_list(monkeypatch):
     assert sorted(taken) == ["Bones", "Feather"]          # not the Cowhide, not the other pile
     assert [g["name"] for g in ground] == ["Cowhide", "Bones"]
     assert f.looted == 2
+
+
+def test_fresh_account_food_top_up_makes_room(monkeypatch):
+    """A new account carries 2 shrimps + bread and a full starter kit: drop the kit's junk,
+    then spawn lobsters up to FOOD_SPAWN."""
+    from lumberjack import actions, items
+    from lumberjack.core import backpack
+    names = ["bronze_axe", "tinderbox", "small_fishing_net", "shrimps", "bucket", "pot", "bread",
+             "bronze_pickaxe", "bronze_dagger", "bronze_sword", "wooden_shield", "shortbow",
+             "bronze_arrow", "air_rune", "mind_rune", "coins", "mystery_item"] + ["x"] * 9 + [None] * 2
+    monkeypatch.setattr(backpack, "slots", lambda: [{"id": 1 if n else -1, "key": n} for n in names])
+    dropped, filled = [], []
+    monkeypatch.setattr(actions, "drop_known", lambda ctx, gs, slots: dropped.extend(slots))
+    monkeypatch.setattr(items, "fill", lambda ctx, key, n: filled.append((key, n)) or n)
+    f = combat.Fighter.__new__(combat.Fighter)
+    f.foods, f.ctx, f.gs = ["lobster", "shrimps", "bread"], None, object()
+
+    class Inp:
+        def move(self, *a):
+            pass
+    f.inp = Inp()
+    assert f.top_up_food() == combat.FOOD_SPAWN - 2
+    assert filled == [("lobster", combat.FOOD_SPAWN - 2)]
+    kept = {names[i] for i in range(len(names)) if i not in dropped}
+    assert {"bronze_axe", "tinderbox", "coins", "mystery_item", "shrimps", "bread"} <= kept
+    assert len(dropped) == combat.FOOD_SPAWN - 2 - 2          # just enough room (2 slots were free)
+    f.foods = ["lobster"]
+    monkeypatch.setattr(backpack, "slots", lambda: [{"id": 1, "key": "lobster"}] * 6 + [{"id": -1, "key": None}] * 22)
+    assert f.top_up_food() == 0                                # 6 carried: enough
