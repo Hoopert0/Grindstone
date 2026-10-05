@@ -134,6 +134,7 @@ class Plan(BaseModel):
     autopilot: bool = False           # ignore the steps: nav.autopilot picks what to train next
     target: int = 99                  # autopilot: train every skill to this level
     skip: list[str] = []              # autopilot: tasks to leave out
+    check: bool = False               # skill check: one short try per step, then a report
 
 
 class PlaceIn(BaseModel):
@@ -179,6 +180,10 @@ SPAWN_TASKS = {"cooking": "raw fish", "prayer": "bones", "fletching": "logs and 
                "crafting": "uncut gems and a chisel", "smithing": "bars and a hammer", "magic": "runes",
                "herblore": "unfinished potions and their ingredients", "runecrafting": "pure essence"}
 STEP_RETRIES = 3                      # attempts per step before moving on
+CHECK_MINUTES = 2                     # skill check: each task this long
+CHECK_TASKS = ["woodcutting", "fishing", "mining", "combat", "ranged", "magic", "thieving", "slayer",
+               "agility", "hunter", "firemaking", "cooking", "prayer", "fletching", "crafting", "smithing",
+               "herblore", "runecrafting"]
 STALL_LIMIT_S = 360                   # a step with no progress/XP this long is restarted
 RESET_AFTER_S = 600                   # a run that lasted this long counts as having gone well
 TIDY_SPARE = 4                        # this many items the next task doesn't use -> worth a bank trip
@@ -695,6 +700,8 @@ class BotController:
         self._update_failed_at = None
         self.last_reason = None
         self.end_reason = None              # why the last plan / autopilot as a whole ended
+        self.check_results = None           # {task: {"xp", "reasons"}} while a skill check runs
+        self.last_check = None
         self.plan_ends_at = None
 
     @property
@@ -929,7 +936,45 @@ class BotController:
                 self.end_reason = "stopped from the control panel"
             elif self.error:
                 self.end_reason = f"crashed: {self.error}"
+            if plan.check:
+                self._finish_check(log)
             log.info("Plan stopped")
+
+    def start_check(self, minutes=CHECK_MINUTES, tasks=None):
+        """Skill check: every task once, for a few minutes each, at the place for our level -
+        then a report of what earned XP and why anything stopped (logs/skill_check.txt)."""
+        from lumberjack.nav import training
+        tasks = tasks or CHECK_TASKS
+        steps = [PlanStep(task=t, minutes=minutes, place=training.AUTO if training.has_route(t) else None)
+                 for t in tasks]
+        self.check_results = {}
+        err = self.start_plan(Plan(steps=steps, loop=False, resume=False, auto_update=False, check=True))
+        if err:
+            self.check_results = None
+        return err
+
+    def _finish_check(self, log):
+        results, self.check_results = self.check_results or {}, None
+        lines, ok = [], 0
+        for task, r in results.items():
+            xp = sum(r["xp"].values())
+            ok += xp > 0
+            mark = "OK  " if xp > 0 else "FAIL"
+            gained = ", ".join(f"+{n:,} {k}" for k, n in r["xp"].items()) or "no xp"
+            lines.append(f"{mark} {task:<13} {gained:<40} {'; '.join(r['reasons'])}")
+        head = f"Skill check {time.strftime('%Y-%m-%d %H:%M')}, Grindstone {version.label()}: " \
+               f"{ok} of {len(results)} earned XP"
+        report = "\n".join([head, ""] + lines) + "\n"
+        try:
+            LOGS_DIR.mkdir(exist_ok=True)
+            (LOGS_DIR / "skill_check.txt").write_text(report, encoding="utf-8")
+        except OSError as e:
+            log.warning("Couldn't save the skill check (%s)", e)
+        for line in [head] + lines:
+            log.info("%s", line)
+        self.last_check = report
+        if not self.stop_event.is_set():
+            self.end_reason = f"skill check done - {ok} of {len(results)} earned XP (Tools › Skill check)"
 
     def _run_autopilot(self, plan: Plan):
         """Train the whole account: nav.autopilot picks each step (task, level to reach, auto place)."""
@@ -1025,6 +1070,9 @@ class BotController:
             err = task_problem(s)
             if err:
                 log.warning("Skipping step %s: %s", step.task, err)
+                if self.check_results is not None:
+                    self.check_results.setdefault(step.task, {"xp": {}, "reasons": []})["reasons"].append(
+                        f"skipped: {err}")
                 return False
             place = places.load().get(place_name) if place_name and place_name != training.AUTO else None
             label = f"Plan step {self.plan_info['step']}/{self.plan_info['of']}: {step.task}" + \
@@ -1047,7 +1095,8 @@ class BotController:
         from lumberjack.nav import places
         failures, attempt, back_to, checked = 0, 0, None, False
         deadline = time.monotonic() + s.max_minutes * 60 if s.max_minutes else None
-        while failures < STEP_RETRIES:
+        retries = 1 if self.check_results is not None else STEP_RETRIES     # a check shows failures
+        while failures < retries:
             if self.stop_event.is_set():
                 return False
             if deadline:                           # retries share the run's time limit
@@ -1102,6 +1151,11 @@ class BotController:
                 reason = f"crashed: {e}"
                 log.exception("Run crashed")
             row = history.record(s.task, place_name, wall0, before, history.snapshot(), reason)
+            if self.check_results is not None:
+                r = self.check_results.setdefault(s.task, {"xp": {}, "reasons": []})
+                for k, n in (row.get("xp") or {}).items():
+                    r["xp"][k] = r["xp"].get(k, 0) + n
+                r["reasons"].append(reason)
             if row["xp"]:
                 log.info("This run: %s in %.0f min", ", ".join(f"+{n:,} {k} xp" for k, n in row["xp"].items()),
                          row["minutes"])
@@ -1117,14 +1171,14 @@ class BotController:
                 failures = 0                       # it had been going well - a fresh start
             failures += 1
             back_to = getattr(self.bot, "displaced_from", None) or back_to
-            if place is not None and not checked and failures < STEP_RETRIES:
+            if place is not None and not checked and failures < retries:
                 checked = True
                 moved = self._recheck_place(place_name, log)
                 if moved:
                     place, back_to = moved, None
-            if failures < STEP_RETRIES:
-                log.warning("Ended early (%s) - recovering, try %d of %d", reason, failures + 1, STEP_RETRIES)
-        log.warning("Giving up after %d tries in a row", STEP_RETRIES)
+            if failures < retries:
+                log.warning("Ended early (%s) - recovering, try %d of %d", reason, failures + 1, retries)
+        log.warning("Giving up after %d tries in a row", retries)
         return False
 
     def _recheck_place(self, place_name, log):
@@ -1679,6 +1733,23 @@ def plan_start(p: Plan):
     save_plan(p)
     err = ctl.start_plan(p)
     return JSONResponse({"ok": err is None, "error": err}, status_code=200 if err is None else 400)
+
+
+@app.post("/api/skillcheck")
+def skillcheck_start():
+    err = ctl.start_check()
+    return JSONResponse({"ok": err is None, "error": err}, status_code=200 if err is None else 400)
+
+
+@app.get("/api/skillcheck")
+def skillcheck_get():
+    report = ctl.last_check
+    if report is None:
+        try:
+            report = (LOGS_DIR / "skill_check.txt").read_text(encoding="utf-8")
+        except OSError:
+            report = None
+    return {"running": ctl.check_results is not None and ctl.running, "report": report}
 
 
 @app.post("/api/places/save")

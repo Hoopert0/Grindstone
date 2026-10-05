@@ -534,6 +534,19 @@
       </div>
       <div id="lgmsg" class="msg"></div>
     </div>
+    <!-- Skill check -->
+    <div class="card">
+      <h2>Skill check</h2>
+      <div class="hint" style="margin:0 0 10px">Runs every skill once for 2 minutes at the right place for your
+        level (about 40 minutes), then lists which ones earned XP and why any stopped. Copy the report and send it
+        over when something isn't working. Also saved as <code>logs\skill_check.txt</code>.</div>
+      <div class="row">
+        <button id="sc_start" class="grow" type="button">Check every skill</button>
+        <button id="sc_copy" type="button" title="Copy the report">📋 Copy</button>
+      </div>
+      <div id="scmsg" class="msg"></div>
+      <pre id="sc_report" class="hint" style="white-space:pre-wrap;margin:8px 0 0;max-height:260px;overflow:auto" hidden></pre>
+    </div>
     <!-- Manual controls -->
     <div class="card">
       <h2>Manual controls</h2>
@@ -1252,6 +1265,34 @@ setInterval(async () => {
 }, 4000);
 
 // copy the log (all lines, oldest first) - for pasting into a message or a bug report
+async function loadCheck() {
+  try {
+    const j = await (await fetch("/api/skillcheck")).json();
+    $("sc_report").hidden = !j.report;
+    $("sc_report").textContent = j.report || "";
+    $("sc_start").disabled = !!j.running;
+    $("sc_start").textContent = j.running ? "Checking skills…" : "Check every skill";
+  } catch (e) { /* panel restarting */ }
+}
+$("sc_start").onclick = async () => {
+  if (!confirm("Run every skill for 2 minutes each (about 40 minutes)? Anything running now must be stopped first.")) return;
+  const j = await post("/api/skillcheck", null, $("scmsg"));
+  if (j.ok) $("scmsg").textContent = "Started - watch the log; the report appears here when it's done.";
+  loadCheck();
+};
+$("sc_copy").onclick = async () => {
+  const text = $("sc_report").textContent;
+  if (!text) return;
+  try { await navigator.clipboard.writeText(text); }
+  catch (e) {
+    const t = document.createElement("textarea"); t.value = text; document.body.appendChild(t);
+    t.select(); document.execCommand("copy"); t.remove();
+  }
+  $("sc_copy").textContent = "✓ Copied"; setTimeout(() => $("sc_copy").textContent = "📋 Copy", 1500);
+};
+loadCheck();
+setInterval(loadCheck, 15000);
+
 $("copylog").onclick = async () => {
   const text = $("log").innerText;
   try { await navigator.clipboard.writeText(text); }

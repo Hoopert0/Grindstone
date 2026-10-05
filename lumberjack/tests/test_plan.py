@@ -582,3 +582,19 @@ def test_autopilot_surfaces_before_a_placeless_step(monkeypatch):
     ctl.plan_info = {}
     ctl._run_plan(server.Plan(autopilot=True, target=99))
     assert steps == [("prayer", "★ Lumbridge")]
+
+
+def test_skill_check_runs_each_task_once_and_reports(monkeypatch, tmp_path):
+    ctl, built = runner(monkeypatch, ["time limit reached", "stuck: no anvil nearby"])
+    monkeypatch.setattr(server, "LOGS_DIR", tmp_path)
+    from lumberjack import history
+    xp = iter([{"woodcutting": 350}, {}])
+    monkeypatch.setattr(history, "record", lambda *a: {"xp": next(xp), "minutes": 2})
+    assert ctl.start_check(minutes=0.01, tasks=["woodcutting", "smithing"]) is None
+    ctl.thread.join(10)
+    assert built == ["woodcutting", "smithing"]                 # one try each, no retries
+    report = (tmp_path / "skill_check.txt").read_text()
+    assert "1 of 2 earned XP" in report
+    assert "OK   woodcutting" in report and "+350 woodcutting" in report
+    assert "FAIL smithing" in report and "no anvil nearby" in report
+    assert "skill check done" in ctl.end_reason and ctl.check_results is None

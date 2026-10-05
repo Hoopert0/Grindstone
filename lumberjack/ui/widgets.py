@@ -104,38 +104,36 @@ def make_box(gs):
 
 
 def make(ctx, gs, product=None, amounts=("All", "10", "X", "5")):
-    """With a make box open: pick the first available of `amounts` ("Make All"...) on the option
-    for `product` (matched against the labels' text and the options' item names), else the only
-    option. True if clicked; False when there's no box (or no add-on support)."""
+    """With a make box open: pick the first available of `amounts` ("Make All"...) for `product`
+    (the buttons nearest its label, or whose options name it), else for the only/first product.
+    The server's skill dialogues (and the smithing screen) give each amount its own button,
+    often stacked on the item picture - those are picked from the right-click menu. True if
+    clicked; False when there's no box (or no add-on support)."""
     box = make_box(gs)
     if not box:
         return False
-    target = box[0]
+    ref = None
     if product and len(box) > 1:
         want = product.replace("_", " ").lower()
         labels = [w for w in find(gs) if w["text"] and want in w["text"].lower()]
-        if labels:                          # the option nearest its label (rows or a grid)
-            lx, ly = center(labels[0])
-            dist = lambda w: (center(w)[0] - lx) ** 2 + (center(w)[1] - ly) ** 2
-            # some boxes (smithing) give each amount its own button: take the nearest button
-            # that offers the amount we want, not just the nearest button
-            for amount in amounts:
-                offers = [w for w in box if any(o.lower().endswith(" " + amount.lower()) for o in w["ops"])]
-                if offers:
-                    w = min(offers, key=dist)
-                    if dist(w) <= dist(min(box, key=dist)) + 60 ** 2:     # still this product's row
-                        op = next(o for o in w["ops"] if o.lower().endswith(" " + amount.lower()))
-                        stacked = any(o is not w and abs(center(o)[0] - center(w)[0]) < 4
-                                      and abs(center(o)[1] - center(w)[1]) < 4 for o in box)
-                        log.info("Make box: %s %s", op, want)
-                        return choose(ctx, gs, w, op, menu=stacked)
-            target = min(box, key=dist)
+        if labels:
+            ref = center(labels[0])
         else:
             named = [w for w in box if any(want in o.lower() for o in w["ops"])]
-            target = named[0] if named else target
+            box = named or box
+    if ref is None:
+        ref = center(box[0])                    # the first product's buttons
+    dist = lambda w: (center(w)[0] - ref[0]) ** 2 + (center(w)[1] - ref[1]) ** 2
+    near = min(dist(w) for w in box) + 60 ** 2            # within this product's group
     for amount in amounts:
-        op = next((o for o in target["ops"] if o.lower().endswith(" " + amount.lower())), None)
-        if op:
-            log.info("Make box: %s", op)
-            return choose(ctx, gs, target, op)
+        tail = " " + amount.lower()
+        offers = [w for w in box if dist(w) <= near and any(o.lower().endswith(tail) for o in w["ops"])]
+        if not offers:
+            continue
+        w = min(offers, key=dist)
+        op = next(o for o in w["ops"] if o.lower().endswith(tail))
+        stacked = any(o is not w and abs(center(o)[0] - center(w)[0]) < 4
+                      and abs(center(o)[1] - center(w)[1]) < 4 for o in box)
+        log.info("Make box: %s%s", op, f" ({product.replace('_', ' ')})" if product else "")
+        return choose(ctx, gs, w, op, menu=stacked)
     return False

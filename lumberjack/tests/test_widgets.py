@@ -96,3 +96,18 @@ def test_make_stacked_buttons_use_the_menu():
              W(ops=["Make 1"], x=220, y=30)], menu)
     assert widgets.make(ctx, gs, product="dagger", amounts=("All",))
     assert len(ctx.rclicks) == 1 and len(ctx.clicks) == 1
+
+
+def test_make_one_item_dialogue_with_stacked_buttons():
+    """The server's one-item skill dialogue (309): Make 1 / 5 / X / All as separate buttons on the
+    item picture - choose All from the right-click menu."""
+    menu = {"open": True, "x": 0, "y": 0, "w": 100, "entries": [{"verb": "Make 1", "row": 0},
+                                                                {"verb": "Make 5", "row": 1},
+                                                                {"verb": "Make X", "row": 2},
+                                                                {"verb": "Make All", "row": 3}]}
+    ctx = Ctx()
+    gs = GS([W("How many would you like to make?", x=0, y=380, w=500, h=12),
+             W(ops=["Make 1"], x=200, y=400), W(ops=["Make 5"], x=200, y=400),
+             W(ops=["Make X"], x=200, y=400), W(ops=["Make All"], x=200, y=400)], menu)
+    assert widgets.make(ctx, gs)
+    assert len(ctx.rclicks) == 1 and len(ctx.clicks) == 1 and ctx.clicks[0][1] > 0

@@ -4,6 +4,9 @@ Every task needs the game's own data (the add-on loaded by the Grindstone icon).
 **spawns** create what they need with the singleplayer `::item` command, so they need
 *Spawn missing tools* ticked (Settings tab → Run options, on by default).
 
+**Is every skill working?** Tools tab → **Skill check** runs each skill for 2 minutes at the right
+place for your level and lists which ones earned XP and why any stopped (`logs\skill_check.txt`).
+
 Common options (**Settings** tab → **Run options**):
 
 | Option | What it does |
