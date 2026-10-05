@@ -37,6 +37,8 @@ TIMEOUT_S = 4.0                 # most queries answer in milliseconds
 HEAVY_TIMEOUT_S = 12.0          # scans of the scene / bank
 HEAVY = {"locs", "ground", "npcs", "inv", "widgets"}
 SLOW_S = 1.5
+LOADING_STATES = {25, 28}       # the client's gameState while it loads a new area
+LOADING_WAIT_S = 10.0
 log = logging.getLogger("gamestate")
 
 
@@ -143,8 +145,23 @@ class GameState:
         return {name: {"level": s["base"][i], "boosted": s["boosted"][i], "xp": s["xp"][i]}
                 for i, name in enumerate(SKILLS) if i < len(s.get("base", []))}
 
-    def player(self):
-        return self._q("player")
+    def player(self, raw=False):
+        """Where we are: {'logged_in', 'index', 'in_combat', 'tile', 'plane', ...}. While the game
+        loads a new area (after a teleport, crossing into a new region) it briefly isn't "in
+        game" and the answer has no tile - wait that out (LOADING_WAIT_S). Logged out for real:
+        GameStateError. raw=True: the answer as it is ({'logged_in': False} when out)."""
+        me = self._q("player")
+        if raw or me.get("logged_in", True):
+            return me
+        end = time.monotonic() + LOADING_WAIT_S
+        while time.monotonic() < end:
+            if self._q("tick").get("state") not in LOADING_STATES:
+                break                                   # the login screen / connection lost
+            time.sleep(0.3)
+            me = self._q("player")
+            if me.get("logged_in", True):
+                return me
+        raise GameStateError("not in the game right now (logged out, or the world is still loading)")
 
     def locs(self, radius=15, name=None):
         """Scene objects (trees, rocks, fires, booths...) within `radius` tiles, nearest first:

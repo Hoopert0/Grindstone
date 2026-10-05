@@ -668,6 +668,8 @@ function fmtTime(s) {
   return h ? `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}` : `${m}:${String(sec).padStart(2, "0")}`;
 }
 
+let shownError = null;              // the run error on screen - cleared once it's gone
+
 async function post(url, body, msgEl) {
   if (msgEl) msgEl.textContent = "";
   const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" },
@@ -1245,7 +1247,8 @@ function connect() {
     const pill = $("pill");
     pill.className = "pill " + (st.error ? "err" : st.paused ? "pause" : running ? "run" : "");
     pill.textContent = st.error ? "error" : st.paused ? "paused" : running ? "running" : st.manual ? "manual" : "idle";
-    if (st.error) $("msg").textContent = st.error;
+    if (st.error) { $("msg").textContent = st.error; shownError = st.error; }
+    else if (shownError && $("msg").textContent === shownError) { $("msg").textContent = ""; shownError = null; }
     if (st.log.length) {
       const box = $("log"), stick = box.scrollTop + box.clientHeight >= box.scrollHeight - 20;
       box.textContent += st.log.join("\n") + "\n";

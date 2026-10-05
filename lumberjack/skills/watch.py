@@ -45,7 +45,7 @@ def plan_checks(bot, stop_cls):
     finally:
         bot._watch_busy = False
     try:
-        me = gs.player()
+        me = gs.player(raw=True)
         if not me.get("logged_in", True):
             _wait_logged_in(bot, gs, stop_cls)
             bot._watch_marker = None
@@ -99,7 +99,7 @@ def _wait_logged_in(bot, gs, stop_cls):
             raise stop_cls("stopped from control panel")
         time.sleep(3.0)
         try:
-            if gs.player().get("logged_in", True):
+            if gs.player(raw=True).get("logged_in", True):
                 break
         except gamestate.GameStateError:
             continue

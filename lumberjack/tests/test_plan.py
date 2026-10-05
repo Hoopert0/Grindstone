@@ -117,7 +117,7 @@ def test_watch_level_stall_and_logout(monkeypatch):
     state = {"fishing": 19, "xp": 100, "logged_in": True, "calls": 0}
 
     class GS:
-        def player(self):
+        def player(self, raw=False):
             state["calls"] += 1
             if not state["logged_in"] and state["calls"] > 2:
                 state["logged_in"] = True                     # logs back in after a moment

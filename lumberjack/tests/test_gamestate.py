@@ -138,3 +138,19 @@ def test_reset_and_rotate_camera_through_game_data():
         assert Ctx.inp.keys == [actions.VK_LEFT]
     finally:
         G._shared_retry_at = 0.0
+
+
+def test_player_waits_out_loading_then_says_logged_out(monkeypatch):
+    from lumberjack.core import gamestate as G
+    answers = {"player": [{"logged_in": False}, {"logged_in": False}, {"logged_in": True, "tile": [1, 2]}],
+               "tick": [{"state": 25}, {"state": 25}]}
+    gs = G.GameState.__new__(G.GameState)
+    gs._q = lambda cmd: answers[cmd].pop(0)
+    monkeypatch.setattr(G.time, "sleep", lambda s: None)
+    assert gs.player()["tile"] == [1, 2]                       # loading a new area: waited
+    answers.update(player=[{"logged_in": False}], tick=[{"state": 10}])
+    import pytest
+    with pytest.raises(G.GameStateError, match="not in the game"):
+        gs.player()                                             # the login screen: a clear error
+    answers.update(player=[{"logged_in": False}])
+    assert gs.player(raw=True) == {"logged_in": False}

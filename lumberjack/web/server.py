@@ -191,6 +191,13 @@ IDLE_PASS_WAIT_S = 60                 # a whole plan pass where nothing worked: 
 GOOD_ENDS = ("time limit reached", "reached")   # stop reasons that mean the step is done
 
 
+def _err_text(e):
+    """An exception as a readable line: a bare KeyError reads "'tile'" otherwise."""
+    if isinstance(e, (KeyError, IndexError, TypeError, AttributeError)):
+        return f"{type(e).__name__}: {e} (a game reply was missing something - see the log)"
+    return str(e)
+
+
 def _hours_text(h):
     return f"{h * 60:g} min" if h and h < 1 else f"{h:g} h"
 
@@ -747,7 +754,7 @@ class BotController:
                 self._run_with_recovery(s, log, label=f"Running {s.task}", first_as_is=True)
             except Exception as e:
                 if not self.stop_event.is_set():
-                    self.error = str(e)
+                    self.error = _err_text(e)
                     log.exception("Run crashed")
             finally:
                 self._doing(None)
@@ -842,7 +849,7 @@ class BotController:
                 self.bot = make()
                 self.bot.run()
             except Exception as e:  # surface e.g. "game window not found" in the UI
-                self.error = str(e)
+                self.error = _err_text(e)
                 logging.getLogger(name).exception("Bot crashed")
 
         self.thread = threading.Thread(target=run, name="bot", daemon=True)
@@ -926,7 +933,7 @@ class BotController:
                     _mark_running(i, end)           # a resume carries on after this step
         except Exception as e:
             if not self.stop_event.is_set():       # (a stop mid-travel surfaces as an exception)
-                self.error = str(e)
+                self.error = _err_text(e)
                 log.exception("Plan crashed")
         finally:
             self.plan_info = None
@@ -1028,7 +1035,7 @@ class BotController:
                     _mark_running(-1, end)
         except Exception as e:
             if not self.stop_event.is_set():
-                self.error = str(e)
+                self.error = _err_text(e)
                 log.exception("Autopilot crashed")
         finally:
             if self.stop_event.is_set():
@@ -1148,7 +1155,7 @@ class BotController:
                 self.bot.run()
                 reason = getattr(self.bot, "stop_reason", None) or "ended"
             except Exception as e:
-                reason = f"crashed: {e}"
+                reason = f"crashed: {_err_text(e)}"
                 log.exception("Run crashed")
             row = history.record(s.task, place_name, wall0, before, history.snapshot(), reason)
             if self.check_results is not None:
