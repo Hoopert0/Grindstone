@@ -154,9 +154,9 @@ class GameWindow:
                 self.refind()
 
     def _grab_once(self):
+        """The add-on's frame works whatever the window is doing (minimized, covered, on another
+        screen) - the game keeps drawing it. Only the screen-grab fallbacks need the window up."""
         global _last
-        if self.minimized():
-            raise GameMinimized("the game window is minimized - restore it so the bot can see the game")
         with _grab_lock:                      # first choice: the frame from inside the game (no screen grab)
             now = time.monotonic()
             if _last and _last[0] == "agent" and now - _last[1] < FRAME_REUSE_S:
@@ -166,13 +166,16 @@ class GameWindow:
         if img is not None and img.shape[:2] == (CANVAS_H, CANVAS_W):
             with _grab_lock:
                 _last = ("agent", time.monotonic(), img)
-            if self.canvas_offset is None:
+            if self.canvas_offset is None and not self.minimized():   # (a minimized window has no place)
                 try:
                     x, y = win32gui.ScreenToClient(self.hwnd, win32gui.GetWindowRect(self.canvas_hwnd)[:2])
                     self.canvas_offset = (x, y)
                 except win32gui.error:
                     pass
             return img
+        if self.minimized():
+            raise GameMinimized("the game window is minimized and the game's add-on isn't sending "
+                                "frames - restore the window (or restart the game with the Grindstone icon)")
         if self.canvas_hwnd != self.hwnd:
             with _grab_lock:
                 now = time.monotonic()
