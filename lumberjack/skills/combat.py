@@ -222,6 +222,9 @@ class Fighter(BotBase):
                     self.target_index = attacker
                     self.state = "fighting"
                     self.fight(engaged=True)
+                    self.under_attack_since = None
+                    continue
+                if self.gs and self.waiting_out_combat():
                     continue
                 if not self.gs and health.in_combat(frame):
                     self.state = "fighting"
@@ -524,6 +527,28 @@ class Fighter(BotBase):
                 log.info("Attacking %s (%d tile(s) away)", n["name"], n["dist"])
                 return key(n["name"])
         return None
+
+    UNDER_ATTACK_WAIT_S = 6.0
+
+    def waiting_out_combat(self):
+        """We're in combat but can't tell with what yet: attacking anything else only gets
+        "You're already under attack!" - wait a moment (bounded) for the attacker to show."""
+        from lumberjack.core.gamestate import GameStateError
+        try:
+            busy = self.gs.player().get("in_combat")
+        except GameStateError:
+            return False
+        if not busy:
+            self.under_attack_since = None
+            return False
+        now = time.monotonic()
+        since = getattr(self, "under_attack_since", None) or now
+        self.under_attack_since = since
+        if now - since > self.UNDER_ATTACK_WAIT_S:
+            return False
+        self.state = "under attack - waiting to see by what"
+        self.sleep(0.6)
+        return True
 
     def attacker_gs(self):
         """NpcList index of a monster that's fighting us right now, or None."""

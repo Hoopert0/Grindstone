@@ -37,6 +37,19 @@ def best_spell(level):
     return SPELLS[-1][1:]
 
 
+def pick_targets(npcs, me):
+    """Whom to cast on, best first. Something already fighting us (or that we're fighting) comes
+    first - and while we're under attack it's the only choice: anything else just gets "You're
+    already under attack!". Otherwise the nearest one nobody is fighting."""
+    mine = 32768 + me.get("index", -1)
+    ours = [n for n in npcs if n.get("interacting") == mine or n.get("index") == me.get("interacting")]
+    if ours:
+        return sorted(ours, key=lambda n: n["dist"])
+    if me.get("in_combat"):
+        return []                       # attacked by something we can't see/cast on yet: wait
+    return sorted((n for n in npcs if not n.get("in_combat")), key=lambda n: n["dist"])
+
+
 class Mage(BotBase):
     name = "magic"
 
@@ -70,6 +83,8 @@ class Mage(BotBase):
                 if kind == "npc":
                     self.ensure_hp()
                 ok = self.cast(spell, kind)
+                if ok is None:                         # nothing to cast on right now
+                    continue
                 self.fails = 0 if ok else self.fails + 1
                 if self.fails >= 8:
                     raise StopBot(f"couldn't cast {spell} 8 times in a row (no spellbook data? restart the "
@@ -122,8 +137,12 @@ class Mage(BotBase):
         elif kind == "alch":
             if not self.alch(spell):
                 return False
-        elif not self.strike(spell):
-            return False
+        else:
+            hit = self.strike(spell)
+            if hit is None:
+                return None
+            if not hit:
+                return False
         self.sleep(CAST_S[kind] + random.uniform(0, 0.4))
         if self._xp() > xp0:
             self.casts += 1
@@ -154,11 +173,11 @@ class Mage(BotBase):
         from lumberjack.core.backpack import key
         from lumberjack.core.gamestate import top_entry
         npcs = [n for n in self.gs.npcs() if key(n["name"]) in self.targets and interact.on_screen(*n["screen"])]
-        npcs.sort(key=lambda n: (n.get("in_combat", False), n["dist"]))
+        npcs = pick_targets(npcs, self.gs.player())
         if not npcs:
             self.state = "looking for something to cast on"
             self.sleep(1.5)
-            return False
+            return None                                  # waiting, not a failed cast
         if not self.select_spell(spell):
             return False
         for px, py in interact.points_for(npcs[0]):

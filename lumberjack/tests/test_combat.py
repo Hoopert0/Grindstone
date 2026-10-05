@@ -488,3 +488,17 @@ def test_slayer_sets_the_task_and_renews_it(monkeypatch):
     f.assigned_at = None
     with __import__("pytest").raises(Exception, match="Slayer task"):
         f.check_levels()
+
+
+def test_magic_casts_on_its_attacker_only_while_attacked():
+    from lumberjack.skills.magic_task import pick_targets
+    me = {"index": 5, "in_combat": True, "interacting": -1}
+    near = {"index": 1, "dist": 1, "interacting": -1, "in_combat": False}
+    attacker = {"index": 2, "dist": 6, "interacting": 32768 + 5, "in_combat": True}
+    assert pick_targets([near, attacker], me) == [attacker]
+    assert pick_targets([near], me) == []                         # attacked by something unseen: wait
+    me = {"index": 5, "in_combat": False, "interacting": -1}
+    busy = {"index": 3, "dist": 0, "interacting": 7, "in_combat": True}
+    assert pick_targets([busy, near], me) == [near]
+    me["interacting"] = 3                                         # we're on it already: keep going
+    assert pick_targets([near, busy], me) == [busy]
