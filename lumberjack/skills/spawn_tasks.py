@@ -464,6 +464,16 @@ ALTAR_RADIUS = 20
 ALTAR_IDS = {2478, 2479, 2480, 2481, 2482, 2483, 2484, 2485, 2486}   # air ... nature (server: Altar.kt)
 
 
+def altar_points(a):
+    """Hover points over an altar: the game's own points first, then a grid around them."""
+    from lumberjack.core import interact
+    pts = list(interact.points_for(a))
+    (gx, gy), (bx, by) = a["screen"], a.get("body", a["screen"])
+    cx, cy = (gx + bx) // 2, (gy + by) // 2
+    pts += [(cx + dx, cy + dy) for dy in (-24, 0, 24) for dx in (-30, 0, 30) if (dx, dy) != (0, 0)]
+    return pts
+
+
 def best_altar(level):
     return max((a for a in ALTARS if a[0] <= level), key=lambda a: a[0])
 
@@ -503,17 +513,17 @@ class Runecrafter(SupplyTask):
 
     def process(self, inv, supply_slots, tools):
         from lumberjack.core import interact
-        from lumberjack.core.gamestate import top_entry
         before = len(supply_slots)
         a = self.find_altar()
         if a is None:
             raise StopBot("no runecrafting altar here - the teleport went somewhere else")
-        if not interact.use_option(self.ctx, self.gs, interact.points_for(a), "Craft-rune", a["name"]):
+        if not self.click_craft(a):
             self.log.info("Couldn't click Craft-rune on the altar (%d tiles away, menu: %s) - walking up to it",
-                          a.get("dist", -1), (top_entry(self.gs.menu()) or {}).get("verb"))
+                          a.get("dist", -1), self.seen_menu)
             interact.walk_to_tile(self.ctx, self.gs, a["tile"], arrive=1)
             a = self.find_altar() or a
-            if not interact.use_option(self.ctx, self.gs, interact.points_for(a), "Craft-rune", a["name"]):
+            if not self.click_craft(a):
+                self.log.warning("Still no Craft-rune on the altar (menu: %s)", self.seen_menu)
                 return 0
         end = time.monotonic() + 15                 # walk over, then every essence at once
         while time.monotonic() < end:
@@ -526,6 +536,39 @@ class Runecrafter(SupplyTask):
 
     def keep(self, key):
         return bool(key) and key.endswith("_rune")      # crafted runes stack - Magic can use them
+
+    def click_craft(self, a):
+        """Craft-rune on the altar: hover a spread of points over it (a big object's reported
+        point can sit off its model - that hovers the floor: "Walk here"), take Craft-rune when
+        it's on top, else right-click and pick it. True if clicked."""
+        import random
+        from lumberjack.core import interact
+        from lumberjack.core.gamestate import menu_row_point, top_entry
+        is_craft = lambda e: bool(e) and e["verb"].lower() == "craft-rune"
+        self.seen_menu = None
+        for x, y in altar_points(a):
+            if not interact.on_screen(x, y):
+                continue
+            self.inp.move(x, y)
+            self.sleep(random.uniform(0.1, 0.15))
+            menu = self.gs.menu()
+            top = top_entry(menu)
+            self.seen_menu = f"{top['verb']} {top['subject']}" if top else None
+            if is_craft(top):
+                self.inp.click()
+                return True
+            e = next((e for e in menu.get("entries") or [] if is_craft(e)), None)
+            if e:
+                self.inp.right_click(x, y)
+                self.sleep(random.uniform(0.2, 0.3))
+                menu = self.gs.menu()
+                e = next((e for e in menu.get("entries") or [] if is_craft(e)), None)
+                if menu.get("open") and e:
+                    rx, ry = menu_row_point(menu, e["row"])
+                    self.inp.click(rx + random.randint(-10, 10), ry + random.randint(-1, 1))
+                    return True
+                self.inp.move(x, max(30, y - 90))
+        return False
 
     def find_altar(self):
         """The altar in this room: by its object id (the server's Altar table) or by name +

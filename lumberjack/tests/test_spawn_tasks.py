@@ -335,14 +335,19 @@ def test_runecrafting_teleports_by_level_and_crafts(game, monkeypatch):
                                            {"name": "Altar", "id": 2478, "ops": ["Craft-rune"], "tile": [2843, 4833],
                                             "screen": [300, 200], "body": [300, 180]}]
 
-    def craft(ctx, gs, points, verb, subject):
-        assert (verb, subject) == ("Craft-rune", "Altar")
+    def craft():                                    # Craft-rune clicked: every essence becomes a rune
         for i, s in enumerate(game.inv):
             if s["key"] == "pure_essence":
                 game.inv[i] = {"id": -1, "key": None, "name": None}
         game.put("air_rune")
-        return 300, 200
-    monkeypatch.setattr(interact, "use_option", craft)
+    hovers = []
+
+    def move(x, y, *a, **k):
+        hovers.append((x, y))
+        # the game's reported point is floor ("Walk here"); the altar's model is a little off it
+        game.top = "Craft-rune" if len(hovers) > 2 else "Walk here"
+    r.inp.move, r.inp.click = move, craft
+    monkeypatch.setattr(interact, "on_screen", lambda x, y, margin=4: True)
     assert r.process(game.inv, r.supply_slots(game.inv), {}) == 28
     game.skills_["runecrafting"]["level"] = 27
     r.restock(game.inv, {})                       # level 27: on to the cosmic altar, runes kept (one stack)
