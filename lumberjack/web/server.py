@@ -186,6 +186,10 @@ IDLE_PASS_WAIT_S = 60                 # a whole plan pass where nothing worked: 
 GOOD_ENDS = ("time limit reached", "reached")   # stop reasons that mean the step is done
 
 
+def _hours_text(h):
+    return f"{h * 60:g} min" if h and h < 1 else f"{h:g} h"
+
+
 def _levels():
     """{skill: base level} from the game, or {} without game data."""
     from lumberjack.core import gamestate
@@ -377,6 +381,12 @@ def preflight(s: "Settings"):
             fixes.append(f"Trains every skill to {s.autopilot_target}: combat basics first, quick Prayer, then "
                          "always the lowest skill to its next milestone, at the best spot for the level. "
                          "Wears the best gear for its levels.")
+            if s.max_minutes:
+                warnings.append(f"Stops after {_hours_text(s.max_minutes / 60)} - clear Settings › Run options › "
+                                "'Stop after' to run until you press Stop.")
+            else:
+                fixes.append("Runs until you press Stop (each skill gets up to 30 min at a time, then the "
+                             "next lowest one).")
     elif s.task in SPAWN_TASKS:
         what = SPAWN_TASKS[s.task]
         if not (s.spawn_tools and _names_from_game()):
@@ -664,6 +674,7 @@ class BotController:
         self.updating = False
         self._update_failed_at = None
         self.last_reason = None
+        self.end_reason = None              # why the last plan / autopilot as a whole ended
         self.plan_ends_at = None
 
     @property
@@ -682,10 +693,10 @@ class BotController:
         if check["errors"]:
             return "Can't start yet: " + " ".join(check["errors"])
         if s.task == "autopilot":           # the whole account: a plan that picks its own steps
+            # only Controls' "Stop after" limits it - not the Plan tab's hours (that's for plans)
             p = load_plan().model_copy(update={"autopilot": True, "target": s.autopilot_target,
-                                               "skip": s.autopilot_skip, "steps": []})
-            if s.max_minutes:
-                p = p.model_copy(update={"max_hours": s.max_minutes / 60})
+                                               "skip": s.autopilot_skip, "steps": [],
+                                               "max_hours": s.max_minutes / 60 if s.max_minutes else None})
             return self.start_plan(p)
         err = task_problem(s)
         if err:
@@ -701,6 +712,7 @@ class BotController:
         self.stop_event.clear()
         self.pause_event.clear()
         self.error = None
+        self.end_reason = None
         log = logging.getLogger(s.task)
 
         def run():
@@ -787,6 +799,7 @@ class BotController:
         self.stop_event.clear()
         self.pause_event.clear()
         self.error = None
+        self.end_reason = None
 
         def run():
             try:
@@ -820,6 +833,7 @@ class BotController:
         self.stop_event.clear()
         self.pause_event.clear()
         self.error = None
+        self.end_reason = None
         self.plan_info = {"step": 0, "of": len(plan.steps), "task": None, "place": None, "attempt": 0}
         if ends_at is None and plan.max_hours:
             ends_at = time.time() + plan.max_hours * 3600     # wall clock: survives a panel restart
@@ -841,14 +855,17 @@ class BotController:
                 end = self.plan_ends_at
                 if end and time.time() >= end:
                     log.info("Plan finished - its %g h are up", plan.max_hours or 0)
+                    self.end_reason = f"the plan's time limit ({_hours_text(plan.max_hours)}) is up"
                     break
                 i = next_step(plan, i, _levels())
                 if i is None:
                     log.info("Plan finished - every step's target level is reached")
+                    self.end_reason = "plan finished - every step's target level is reached"
                     break
                 if i == 0 and tried and plan.order != "lowest":
                     if not plan.loop:
                         log.info("Plan finished")
+                        self.end_reason = "plan finished"
                         break
                     log.info("Plan: starting over")
                 if tried and plan.auto_update and plan.resume:
@@ -879,6 +896,10 @@ class BotController:
             self.plan_info = None
             if not self.updating:
                 PLAN_RUNNING.unlink(missing_ok=True)   # stopped/finished on purpose: no resume
+            if self.stop_event.is_set():
+                self.end_reason = "stopped from the control panel"
+            elif self.error:
+                self.end_reason = f"crashed: {self.error}"
             log.info("Plan stopped")
 
     def _run_autopilot(self, plan: Plan):
@@ -895,6 +916,7 @@ class BotController:
                 end = self.plan_ends_at
                 if end and time.time() >= end:
                     log.info("Autopilot finished - its %g h are up", plan.max_hours or 0)
+                    self.end_reason = f"Autopilot's time limit ({_hours_text(plan.max_hours)}) is up"
                     break
                 if n and plan.auto_update and plan.resume:
                     self._maybe_update(log)
@@ -907,6 +929,7 @@ class BotController:
                 if nxt is None:
                     if all(task_level(t, levels) >= plan.target for t in ap.tasks):
                         log.info("Autopilot finished - every skill is at %d", plan.target)
+                        self.end_reason = f"Autopilot finished - every skill is at {plan.target}"
                         break
                     self._doing("every remaining skill is resting after problems - waiting")
                     self._sleep(60)
@@ -931,6 +954,10 @@ class BotController:
                 self.error = str(e)
                 log.exception("Autopilot crashed")
         finally:
+            if self.stop_event.is_set():
+                self.end_reason = "stopped from the control panel"
+            elif self.error:
+                self.end_reason = f"crashed: {self.error}"
             self.plan_info = None
             if not self.updating:
                 PLAN_RUNNING.unlink(missing_ok=True)
@@ -1245,7 +1272,8 @@ class BotController:
             "looted": getattr(b, "looted", 0) if b else 0,
             "task": getattr(b, "name", None) if b else None,
             "xp": b.xp.summary() if b and hasattr(b, "xp") else {},
-            "stop_reason": (getattr(b, "stop_reason", None) or self.error) if b and not self.running else None,
+            "stop_reason": (self.end_reason or getattr(b, "stop_reason", None) or self.error)
+            if b and not self.running else None,
             "elapsed": 0,
             "per_hour": 0,
             "version": version.status(),

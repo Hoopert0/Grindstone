@@ -174,8 +174,9 @@ class GameWindow:
                     pass
             return img
         if self.minimized():
-            raise GameMinimized("the game window is minimized and the game's add-on isn't sending "
-                                "frames - restore the window (or restart the game with the Grindstone icon)")
+            raise GameMinimized("the game window is minimized, and the bot can't get the game's picture "
+                                f"another way: {frames.last_error or 'no frame from the add-on'}. "
+                                "Restore the window, or fix that to let it run minimized")
         if self.canvas_hwnd != self.hwnd:
             with _grab_lock:
                 now = time.monotonic()
