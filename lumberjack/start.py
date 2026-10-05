@@ -202,7 +202,7 @@ def rename_old_icon():
                 old.rename(new)
         except OSError:
             pass
-        done = savesync.REPO / "lumberjack" / "configs" / "icon_set"
+        done = savesync.REPO / "lumberjack" / "configs" / "icon_set_v2"     # (v2: the anvil icon)
         if new.exists() and ICON.exists() and not done.exists():
             ps = (f"$s=(New-Object -ComObject WScript.Shell).CreateShortcut('{new}');"
                   f"$s.IconLocation='{ICON}';$s.Save()")

@@ -1291,6 +1291,11 @@ def icon_png():
     return FileResponse(HERE.parents[0] / "assets" / "grindstone.png", media_type="image/png")
 
 
+@app.get("/icon.svg")
+def icon_svg():
+    return FileResponse(HERE.parents[0] / "assets" / "grindstone.svg", media_type="image/svg+xml")
+
+
 @app.get("/")
 def index():
     return FileResponse(HERE / "index.html")

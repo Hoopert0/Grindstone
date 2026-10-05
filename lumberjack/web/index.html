@@ -4,7 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Grindstone</title>
-<link rel="icon" type="image/png" href="/icon.png">
+<link rel="icon" type="image/svg+xml" href="/icon.svg">
+<link rel="alternate icon" type="image/png" href="/icon.png">
 <style>
   :root {
     --bg: #14120f; --panel: #1f1b16; --panel2: #2a241d; --line: #3a3127;
@@ -51,6 +52,7 @@
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
   .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
   .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .logo { width: 30px; height: 30px; vertical-align: middle; margin-right: 8px; position: relative; top: -2px; }
   .group { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 10px 0 4px; }
   .opt.wide { display: block; }
   .opt.wide span { padding: 10px 6px; font-size: 15px; }
@@ -130,7 +132,7 @@
 </head>
 <body>
 <header>
-  <h1>⚙️ <span>Grind</span>stone</h1>
+  <h1><img src="/icon.svg" alt="" class="logo"><span>Grind</span>stone</h1>
   <span id="pill" class="pill">idle</span>
   <span id="recpill" class="pill rec" hidden>● recording</span>
   <span id="levels" class="pill" hidden></span>
