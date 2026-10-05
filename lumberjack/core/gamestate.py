@@ -191,6 +191,11 @@ class GameState:
         enc = lambda t: base64.b64encode(t.encode("utf-8")).decode("ascii")
         return self._q(f"login {enc(user)} {enc(password)}")
 
+    def chat(self, n=20):
+        """The chat box, newest first: {'count': messages ever added, 'lines': [{'type', 'text'}]}
+        (type 0: the game's own messages)."""
+        return self._q(f"chat {int(n)}")
+
     def varbits(self, *ids):
         """Varbits (farming patch states...): {id: value}."""
         return {int(k): v for k, v in self._q("varbit " + " ".join(str(i) for i in ids)).items()}

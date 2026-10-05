@@ -12,6 +12,7 @@
 All need the game's own data; without it they do nothing. Throttled to every CHECK_EVERY_S.
 """
 import logging
+import re
 import time
 
 log = logging.getLogger("watch")
@@ -52,6 +53,7 @@ def plan_checks(bot, stop_cls):
             bot._watch_pos = None
             return
         check_moved(bot, me, now, stop_cls)
+        check_chat(bot, gs, now, stop_cls)
         if level:
             skills, target = level
             skills = [skills] if isinstance(skills, str) else list(skills)
@@ -66,6 +68,46 @@ def plan_checks(bot, stop_cls):
                 raise stop_cls(f"no progress for {int(stall // 60)} min")
     except gamestate.GameStateError:
         return
+
+
+PROBLEM = re.compile(r"\b(need|needs|can't|cannot|can not|already|not enough|don't have|do not have|"
+                     r"nothing interesting|unable|too low|must|isn't|is not)\b", re.I)
+REPEAT_LIMIT = 6        # the same refusal this often...
+REPEAT_WINDOW_S = 90.0  # ...within this long: stop, saying it (the bot keeps doing something the game refuses)
+
+
+def check_chat(bot, gs, now, stop_cls):
+    """The game's own messages: log the ones that sound like a problem ("You need a Mining level
+    of 15...", "You can't pickpocket while in combat."), and stop when one keeps repeating - the
+    bot is doing something the game refuses, over and over. An add-on without chat: nothing."""
+    from lumberjack.core import gamestate
+    if getattr(bot, "_chat_off", False) or not hasattr(gs, "chat"):
+        return
+    try:
+        chat = gs.chat(30)
+    except gamestate.GameStateError as e:
+        if "unknown state" in str(e):
+            bot._chat_off = True
+        return
+    count = chat.get("count", 0)
+    seen = getattr(bot, "_chat_seen", None)
+    bot._chat_seen = count
+    if seen is None or count <= seen:
+        return                                  # the first look only sets where we are
+    new = [gamestate.clean(l.get("text"))[0] for l in chat.get("lines", [])[:count - seen]
+           if l.get("type") == 0]
+    times = getattr(bot, "_chat_times", None)
+    if times is None:
+        times = bot._chat_times = {}
+    for text in reversed(new):                  # oldest first
+        if not text or not PROBLEM.search(text):
+            continue
+        hits = [t for t in times.get(text, []) if now - t < REPEAT_WINDOW_S] + [now]
+        times[text] = hits
+        if len(hits) == 1:
+            log.info("Game says: %s", text)
+        if len(hits) >= REPEAT_LIMIT:
+            raise stop_cls(f'the game keeps saying "{text}"')
 
 
 def check_moved(bot, me, now, stop_cls):

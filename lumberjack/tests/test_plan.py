@@ -653,3 +653,37 @@ def test_off_the_surface_map():
     assert training.underground((3109, 9835))           # Edgeville dungeon
     assert not training.underground((2474, 3437))       # Gnome agility course
     assert not training.underground((3054, 3307))       # Falador farm
+
+
+def test_chat_logs_problems_and_stops_on_repeats():
+    from lumberjack.skills import watch
+
+    class Stop(Exception):
+        pass
+
+    class GS:
+        def __init__(self):
+            self.lines, self.count = [], 0
+
+        def say(self, text, type_=0):
+            self.lines.insert(0, {"type": type_, "text": text})
+            self.count += 1
+
+        def chat(self, n=20):
+            return {"count": self.count, "lines": self.lines[:n]}
+    gs, bot = GS(), types.SimpleNamespace()
+    gs.say("Welcome to 2009Scape.")
+    watch.check_chat(bot, gs, 0.0, Stop)                      # first look: just where we are
+    gs.say("You manage to mine some copper.")
+    gs.say("hello", type_=2)                                  # someone talking: ignored
+    for i in range(watch.REPEAT_LIMIT - 1):
+        gs.say("<col=ff0000>You need a Mining level of 15 to mine this rock.")
+        watch.check_chat(bot, gs, 10.0 + i, Stop)            # repeating, not yet too often
+    gs.say("You need a Mining level of 15 to mine this rock.")
+    with __import__("pytest").raises(Stop, match="keeps saying"):
+        watch.check_chat(bot, gs, 20.0, Stop)
+    bot2 = types.SimpleNamespace()
+    watch.check_chat(bot2, gs, 0.0, Stop)
+    for i in range(watch.REPEAT_LIMIT + 2):                   # spread out: never too often
+        gs.say("You can't light a fire here.")
+        watch.check_chat(bot2, gs, 100.0 * i, Stop)

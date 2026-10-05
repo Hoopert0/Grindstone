@@ -69,6 +69,7 @@ final class GameState {
             case "loginstatus": return loginStatus();
             case "varp": return varp(arg);
             case "varbit": return varbit(arg);
+            case "chat": return chat(arg == null ? 20 : Integer.parseInt(arg.trim()));
             case "tick": return "{\"loop\":" + statInt("rt4.client", "loop") + ",\"state\":" + statInt("rt4.client", "gameState") + "}";
             default: throw new IllegalArgumentException("unknown state '" + what + "'");
         }
@@ -102,6 +103,21 @@ final class GameState {
             first = false;
         }
         return b.append('}').toString();
+    }
+
+    /** The chat box, newest first: {"count": messages ever added, "lines": [{"type", "text"}]}.
+     *  type 0 = the game's own messages ("You need a Mining level of 15..."). Plain array reads. */
+    private static String chat(int n) throws Exception {
+        Object[] msgs = (Object[]) stat("rt4.Chat", "messages");
+        int[] types = (int[]) stat("rt4.Chat", "types");
+        int count = statInt("rt4.Chat", "size");
+        StringBuilder b = new StringBuilder("{\"count\":").append(count).append(",\"lines\":[");
+        int k = Math.min(Math.max(n, 0), Math.min(msgs.length, count));
+        for (int i = 0; i < k; i++) {
+            b.append(i == 0 ? "" : ",").append("{\"type\":").append(types[i])
+             .append(",\"text\":").append(q(text(msgs[i]))).append('}');
+        }
+        return b.append("]}").toString();
     }
 
     // ---- reflection helpers -------------------------------------------------------------

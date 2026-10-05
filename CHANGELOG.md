@@ -4,6 +4,8 @@
 
 - New skills: Herblore, Runecrafting, Agility, Hunter, Slayer and Farming - Autopilot trains them too
 - Tools › Skill check: every skill for 2 minutes, then a report of what earned XP
+- Reads the game's chat: problems ("You need a Mining level of 15...") show in the log, and a run
+  that keeps getting the same refusal stops with it instead of spamming
 - Autopilot runs until you press Stop (only Controls' *Stop after* limits it); the panel says why
   a plan or Autopilot as a whole ended
 - Longer routes: combat to hill giants, ice warriors, ankou and fire giants; thieving paladins
