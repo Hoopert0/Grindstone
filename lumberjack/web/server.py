@@ -8,6 +8,7 @@ Only listens on 127.0.0.1, so it's reachable from this PC only.
 import asyncio
 import collections
 import json
+import random
 import logging
 import threading
 import time
@@ -1995,6 +1996,7 @@ def auto_login():
         if state == 30:
             log.info("Logged in")
             fails = 0
+            _click_play(gs, log)
             continue
         fails += 1
         log.warning("Login didn't go through (%d of %d)", fails, LOGIN_GIVE_UP)
@@ -2002,6 +2004,34 @@ def auto_login():
             log.warning("Auto login paused for %d min - check the username and password (Tools tab)",
                         LOGIN_PAUSE_S // 60)
             paused_until, fails = time.monotonic() + LOGIN_PAUSE_S, 0
+
+
+PLAY_POINT = (386, 350)             # the welcome screen's "CLICK HERE TO PLAY" (fixed-size client)
+
+
+def _click_play(gs, log):
+    """Past the welcome screen ("Welcome to 2009Scape ... CLICK HERE TO PLAY") that follows a
+    login: click its button - found by its text, else at its usual place while the screen shows."""
+    from lumberjack.core.input import AgentInput
+    from lumberjack.ui import widgets
+    end = time.monotonic() + 15
+    while time.monotonic() < end:
+        time.sleep(1)
+        btn = [w for w in widgets.find(gs, "click here to play") if w["w"] > 0 and w["h"] > 0]
+        shown = btn or widgets.find(gs, "last logged in") or widgets.find(gs, "welcome to")
+        if not shown:
+            continue
+        x, y = widgets.center(btn[0]) if btn else PLAY_POINT
+        try:
+            inp = AgentInput()
+            inp.click(x + random.randint(-6, 6), y + random.randint(-2, 2))
+        except Exception as e:
+            log.warning("Couldn't click 'Click here to play' (%s)", e)
+            return
+        log.info("Clicked 'Click here to play'")
+        time.sleep(2)
+        if not (widgets.find(gs, "click here to play") or widgets.find(gs, "last logged in")):
+            return
 
 
 class LoginIn(BaseModel):

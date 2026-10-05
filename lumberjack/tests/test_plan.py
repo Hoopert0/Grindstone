@@ -494,13 +494,23 @@ def test_auto_login_logs_in_at_the_login_screen(monkeypatch, tmp_path):
             return {"ok": True}
         if cmd == "loginstatus":
             return {"state": state["s"]}
+        if cmd.startswith("widgets "):               # the welcome screen, gone once clicked
+            if cmd == "widgets click here to play" and not state.get("played"):
+                return [{"x": 340, "y": 330, "w": 90, "h": 40, "text": "CLICK HERE TO PLAY"}]
+            return []
         raise AssertionError(cmd)
     monkeypatch.setattr(gamestate.GameState, "_q", q)
+    from lumberjack.core import input as inp
+
+    class FakeInput:
+        def click(self, x, y):
+            state["played"] = (x, y)
+    monkeypatch.setattr(inp, "AgentInput", FakeInput)
     ticks = {"n": 0}
 
     def sleep(s):
         ticks["n"] += 1
-        if ticks["n"] > 6:
+        if ticks["n"] > 12:
             raise Stop
     monkeypatch.setattr(server.time, "sleep", sleep)
     with __import__("pytest").raises(Stop):
@@ -509,6 +519,8 @@ def test_auto_login_logs_in_at_the_login_screen(monkeypatch, tmp_path):
     assert len(state["calls"]) == 1
     _, u, p = state["calls"][0].split(" ")
     assert base64.b64decode(u).decode() == "hero" and base64.b64decode(p).decode() == "secret"
+    x, y = state["played"]                          # then past the welcome screen
+    assert 330 <= x <= 400 and 345 <= y <= 355
 
 
 class Stop(Exception):

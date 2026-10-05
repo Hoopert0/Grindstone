@@ -27,7 +27,26 @@ final class GameState {
 
     private GameState() {}
 
+    // queries whose client calls change game state (type caches, the interface table, login)
+    private static final java.util.Set<String> GAME_THREAD = new java.util.HashSet<>(
+            java.util.Arrays.asList("inv", "ground", "locs", "widgets", "login", "camera"));
+    private static boolean noHook;
+
     static String handle(String what, String arg) throws Exception {
+        if (GAME_THREAD.contains(what) && !noHook) {
+            boolean ready;
+            try {
+                ready = GameThread.ready();
+            } catch (Throwable e) {                 // client without the plugin classes
+                ready = false;
+            }
+            if (ready) return GameThread.call(() -> query(what, arg), 3000);
+            noHook = true;
+        }
+        return query(what, arg);
+    }
+
+    private static String query(String what, String arg) throws Exception {
         switch (what) {
             case "probe": return probe();
             case "menu": return menu();
@@ -499,36 +518,51 @@ final class GameState {
         }
         StringBuilder b = new StringBuilder("[");
         int[] count = {0};
+        Walk w = new Walk();
         if (top >= 0 && all != null && top < all.length) {
-            walkInterface(all, top, 0, 0, b, count, onlyIf, match, 0);
+            walkInterface(all, top, 0, 0, b, count, onlyIf, match, 0, w);
         }
         return b.append("]").toString();
     }
 
+    /** Guards for one walk: each component and interface once, a node budget and a time limit -
+     *  a component tree that points back into itself must never keep the add-on busy. */
+    private static final class Walk {
+        final java.util.Set<Object> seen = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+        final java.util.Set<Integer> interfaces = new java.util.HashSet<>();
+        final long deadline = System.nanoTime() + 150_000_000L;     // 150 ms
+        int nodes = 0;
+
+        boolean over() { return ++nodes > 4000 || System.nanoTime() > deadline; }
+    }
+
     private static void walkInterface(Object[][] all, int iface, int px, int py, StringBuilder b, int[] count,
-                                      Integer onlyIf, String match, int depth) throws Exception {
+                                      Integer onlyIf, String match, int depth, Walk w) throws Exception {
         if (iface < 0 || iface >= all.length || all[iface] == null || depth > 12) return;
-        walkLayer(all, all[iface], -1, px, py, b, count, onlyIf, match, depth);
+        if (!w.interfaces.add(iface)) return;                    // each interface once per walk
+        walkLayer(all, all[iface], -1, px, py, b, count, onlyIf, match, depth, w);
     }
 
     private static void walkLayer(Object[][] all, Object[] comps, int layer, int px, int py, StringBuilder b,
-                                  int[] count, Integer onlyIf, String match, int depth) throws Exception {
+                                  int[] count, Integer onlyIf, String match, int depth, Walk w) throws Exception {
+        if (depth > 12) return;
         Object open = stat("rt4.InterfaceList", "openInterfaces");
         Method getPtr = open.getClass().getMethod("get", long.class);
         for (Object c : comps) {
             if (c == null || getInt(c, "overlayer") != layer) continue;
+            if (!w.seen.add(c) || w.over()) continue;            // each component once; budget spent: stop
             if ((Boolean) get(c, "if3") && (Boolean) get(c, "hidden")) continue;
             int x = px + getInt(c, "x"), y = py + getInt(c, "y");
             int id = getInt(c, "id");
             emitWidget(c, id, x, y, b, count, onlyIf, match);
             if (getInt(c, "type") == 0) {
                 int sx = x - getInt(c, "scrollX"), sy = y - getInt(c, "scrollY");
-                walkLayer(all, comps, id, sx, sy, b, count, onlyIf, match, depth + 1);
+                walkLayer(all, comps, id, sx, sy, b, count, onlyIf, match, depth + 1, w);
                 Object[] created = (Object[]) get(c, "createdComponents");
-                if (created != null) walkLayer(all, created, id, sx, sy, b, count, onlyIf, match, depth + 1);
+                if (created != null) walkLayer(all, created, id, sx, sy, b, count, onlyIf, match, depth + 1, w);
             }
             Object ptr = getPtr.invoke(open, (long) id);
-            if (ptr != null) walkInterface(all, getInt(ptr, "interfaceId"), x, y, b, count, onlyIf, match, depth + 1);
+            if (ptr != null) walkInterface(all, getInt(ptr, "interfaceId"), x, y, b, count, onlyIf, match, depth + 1, w);
         }
     }
 

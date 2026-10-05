@@ -38,7 +38,9 @@ def build(force=False):
     classes = JAR.parent / "agent-classes"
     shutil.rmtree(classes, ignore_errors=True)
     classes.mkdir(parents=True)
-    procs.run([str(jdk / "javac.exe"), "--release", "11", "-d", str(classes), *map(str, src)], check=True)
+    # stubs/ only lets the game-thread hook compile against the game's plugin class; it isn't packaged
+    procs.run([str(jdk / "javac.exe"), "--release", "11", "-sourcepath", str(AGENT_DIR / "stubs"),
+               "-implicit:none", "-d", str(classes), *map(str, src)], check=True)
     procs.run([str(jdk / "jar.exe"), "cfm", str(JAR), str(AGENT_DIR / "MANIFEST.MF"), "-C", str(classes), "."], check=True)
     return JAR
 

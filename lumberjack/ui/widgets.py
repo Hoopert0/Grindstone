@@ -49,14 +49,22 @@ def center(w):
     return w["x"] + w["w"] // 2, w["y"] + w["h"] // 2
 
 
+_no_dialog_at = 0.0
+DIALOG_CHECK_S = 1.0            # loops call this every pass; a full interface read once a second is plenty
+
+
 def continue_dialog(ctx, gs):
     """Click "Click here to continue" if a dialog shows it. True if clicked."""
+    global _no_dialog_at
+    if time.monotonic() - _no_dialog_at < DIALOG_CHECK_S:
+        return False
     for w in find(gs, "click here to continue"):
         if w["w"] > 0 and w["h"] > 0:
             x, y = center(w)
             ctx.inp.click(x + random.randint(-8, 8), y + random.randint(-1, 1))
             ctx.sleep(0.6)
             return True
+    _no_dialog_at = time.monotonic()
     return False
 
 
