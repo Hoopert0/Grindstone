@@ -2033,7 +2033,7 @@ def auto_login():
     from lumberjack.core.gamestate import GameState, GameStateError
     log = logging.getLogger("login")
     gs = GameState()
-    last_try, fails, paused_until = 0.0, 0, 0.0
+    last_try, fails, paused_until = float("-inf"), 0, 0.0     # -inf: the clock may start near 0 at boot
     while True:
         time.sleep(5)
         cfg = load_login()

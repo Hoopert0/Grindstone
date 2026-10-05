@@ -49,7 +49,7 @@ def center(w):
     return w["x"] + w["w"] // 2, w["y"] + w["h"] // 2
 
 
-_no_dialog_at = 0.0
+_no_dialog_at = float("-inf")
 DIALOG_CHECK_S = 1.0            # loops call this every pass; a full interface read once a second is plenty
 
 
