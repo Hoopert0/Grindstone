@@ -34,8 +34,8 @@ out are on the **Settings** tab. No steps needed. It uses its own settings (drop
 catch, spawned food, no looting), wears the best weapon and armour for its levels, and shows its
 progress (total level) under Controls. It trains Attack/Strength/Defence to 10 first (enough HP for everything after),
 Prayer to 43, then always the lowest skill up to its next milestone - the next better spot
-(oaks at 15, willows at 30...) or the next 10 levels - 30 minutes at a time, at the best spot
-for the level. Tick skills under *Skip* to leave them out. A skill that fails twice in a row
+(oaks at 15, willows at 30...) or the next 10 levels - staying on that skill until it gets
+there, at the best spot for the level. A run that stops earning XP for 6 minutes counts as a problem. Tick skills under *Skip* to leave them out. A skill that fails twice in a row
 is rested for an hour. The plan options (time limit, updates, resume) apply.
 
 ## ★ Starter plan

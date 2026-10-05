@@ -21,6 +21,8 @@ STARTER_PLACES = {
     "★ Lumbridge goblins": {"tile": [3250, 3238], "plane": 0},
     "★ Al Kharid warriors": {"tile": [3293, 3173], "plane": 0, "note": "the palace"},
     "★ Lumbridge men": {"tile": [3232, 3210], "plane": 0, "note": "men & women by the houses south of the castle"},
+    "★ West Ardougne people": {"tile": [2480, 3300], "plane": 0,
+                               "note": "the densest men & women in the server's spawns (Lumbridge has few)"},
     "★ Varrock guards": {"tile": [3212, 3462], "plane": 0, "note": "palace courtyard"},
     "★ Ardougne knights": {"tile": [2662, 3306], "plane": 0, "note": "the market"},
     "★ Ardougne paladins": {"tile": [2577, 3298], "plane": 0, "note": "the castle courtyard"},
@@ -97,7 +99,7 @@ ROUTES = {
         (21, None, {}),
     ],
     "thieving": [
-        (1, "★ Lumbridge men", {"thieve": ["man", "woman"]}),
+        (1, "★ West Ardougne people", {"thieve": ["man", "woman"]}),
         (25, "★ Al Kharid warriors", {"thieve": ["al-kharid_warrior", "al_kharid_warrior"]}),
         (40, "★ Varrock guards", {"thieve": ["guard"]}),
         (55, "★ Ardougne knights", {"thieve": ["knight_of_ardougne"]}),

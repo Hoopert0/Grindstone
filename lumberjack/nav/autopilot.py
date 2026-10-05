@@ -8,7 +8,8 @@ a plan step with place "auto" (the training route: right spot + settings for the
     2. Prayer to PRAYER_EARLY: dragon bones make it quick, and it's handy for everything after
     3. then always the lowest skill (ties: the faster-training task first), up to its next
        milestone - the next training-route tier (oaks at 15, willows at 30...) or the next
-       multiple of 10 - but at most STEP_MINUTES at a time, so everything moves along
+       multiple of 10 - and it stays on that skill until the milestone is reached (a run that
+       stops gaining XP is ended by the stall guard and counts as a problem)
 
 A task that ends badly twice in a row is rested for COOLDOWN_S, so one broken skill can't
 stall the run.
@@ -27,7 +28,7 @@ SPEED = ["prayer", "herblore", "runecrafting", "farming", "magic", "fletching", 
          "thieving", "hunter", "ranged", "combat", "slayer", "fishing", "woodcutting", "mining", "agility"]
 COMBAT_BASE = 10
 PRAYER_EARLY = 43
-STEP_MINUTES = 30
+STEP_MINUTES = None                # no time cap: a step ends at its milestone level
 FAILS_BEFORE_REST = 2
 COOLDOWN_S = 3600
 

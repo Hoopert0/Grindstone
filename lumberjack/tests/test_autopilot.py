@@ -29,3 +29,11 @@ def test_rest_and_done():
     assert ap.next_step(lv, now=A.COOLDOWN_S + 1)[0] == "herblore"
     all20 = {s: 20 for s in SKILLS}
     assert ap.next_step(all20) is None
+
+
+def test_a_step_runs_until_its_milestone():
+    ap = A.Autopilot()
+    lv = {s: 15 for s in ("attack", "strength", "defence", "prayer")}
+    lv.update(prayer=50)
+    task, until, minutes, why = ap.next_step(lv)
+    assert minutes is None and until > 1                      # no time cap: to the milestone

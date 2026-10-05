@@ -68,7 +68,7 @@ Runes are spawned 1,000 at a time. Spells are found in the spellbook by name.
 ### 🧤 Thieving
 Pickpockets the nearest suitable person. Being caught (HP drops) means a stun - it waits it out.
 Eats below the set HP% (spawns lobsters when out). Drops junk but keeps coins and food.
-Route: men & women in Lumbridge (1) → Al Kharid warriors (25) → Varrock guards (40) →
+Route: men & women in West Ardougne (1) → Al Kharid warriors (25) → Varrock guards (40) →
 Ardougne knights (55) → paladins (70) → heroes (80).
 
 ### 💀 Slayer · spawns

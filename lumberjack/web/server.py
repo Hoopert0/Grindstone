@@ -409,8 +409,8 @@ def preflight(s: "Settings"):
                 warnings.append(f"Stops after {_hours_text(s.max_minutes / 60)} - clear Settings › Run options › "
                                 "'Stop after' to run until you press Stop.")
             else:
-                fixes.append("Runs until you press Stop (each skill gets up to 30 min at a time, then the "
-                             "next lowest one).")
+                fixes.append("Runs until you press Stop. Each skill is trained to its next milestone (the next "
+                             "multiple of 10 or better training spot) before it moves to the next lowest one.")
     elif s.task in SPAWN_TASKS:
         what = SPAWN_TASKS[s.task]
         if not (s.spawn_tools and _names_from_game()):
@@ -1031,7 +1031,8 @@ class BotController:
                     continue
                 task, until, minutes, why = nxt
                 if end:
-                    minutes = max(0.1, min(minutes, (end - time.time()) / 60))
+                    left = max(0.1, (end - time.time()) / 60)
+                    minutes = left if minutes is None else min(minutes, left)
                 n += 1
                 place = training.AUTO if training.has_route(task) else None
                 if place is None and training.underground(_my_tile()):
