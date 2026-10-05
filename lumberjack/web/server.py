@@ -307,10 +307,19 @@ def preflight(s: "Settings"):
 
     # the game
     try:
-        window().grab()
+        try:
+            window().grab()
+        except Exception:
+            global _win
+            with _win_lock:
+                _win = None                              # look the window up afresh, once
+            window().grab()
     except Exception as e:
         msg = str(e)
-        if "not found" in msg:
+        if "not found" in msg and agent.is_running():
+            errors.append("The game is running (its add-on answers) but its window can't be found - "
+                          f"{msg}. Send the log if this keeps happening.")
+        elif "not found" in msg:
             errors.append("The game isn't running - start it with the Grindstone icon and log in.")
         elif "Fixed" in msg or "canvas" in msg.lower():
             errors.append("The game must be in Fixed screen mode (765x503) - switch it in the game's settings.")
@@ -895,6 +904,8 @@ class BotController:
         if ends_at is None and plan.max_hours:
             ends_at = time.time() + plan.max_hours * 3600     # wall clock: survives a panel restart
         self.plan_ends_at = ends_at
+        global _running_plan
+        _running_plan = plan if plan.resume and not plan.check else None
         _mark_running(after, ends_at)
         self.thread = threading.Thread(target=self._run_plan, args=(plan, after), name="plan", daemon=True)
         self.thread.start()
@@ -1504,6 +1515,13 @@ _win_lock = threading.Lock()
 def window():
     global _win
     with _win_lock:
+        if _win is not None:
+            try:
+                import win32gui
+                if not win32gui.IsWindow(_win.hwnd):     # the game was restarted: a new window
+                    _win = None
+            except Exception:
+                pass
         if _win is None:
             _win = GameWindow()
         return _win
@@ -2081,10 +2099,16 @@ async def ws(sock: WebSocket):
         pass
 
 
+_running_plan = None        # the plan being run (Autopilot isn't saved in plan.json): resumed as is
+
+
 def _mark_running(last_step, ends_at=None):
     try:
         PLAN_RUNNING.parent.mkdir(parents=True, exist_ok=True)
-        PLAN_RUNNING.write_text(json.dumps({"version": version.label(), "last": last_step, "ends_at": ends_at}))
+        mark = {"version": version.label(), "last": last_step, "ends_at": ends_at}
+        if _running_plan is not None:
+            mark["plan"] = _running_plan.model_dump()
+        PLAN_RUNNING.write_text(json.dumps(mark))
     except OSError:
         pass
 
@@ -2282,7 +2306,13 @@ def resume_plan():
     if not PLAN_RUNNING.exists():
         return
     plan = load_plan()
-    if not plan.resume or not plan.steps:
+    try:                                        # the plan that was running (Autopilot included)
+        saved = json.loads(PLAN_RUNNING.read_text()).get("plan")
+        if saved:
+            plan = Plan(**saved)
+    except (OSError, ValueError, TypeError, AttributeError):
+        pass
+    if not plan.resume or not (plan.steps or plan.autopilot):
         PLAN_RUNNING.unlink(missing_ok=True)
         return
     log = logging.getLogger("plan")

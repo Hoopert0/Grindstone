@@ -42,14 +42,37 @@ class GameWindow:
 
     @staticmethod
     def _find(match):
-        hits = []
+        """The game's window: by its title ("2009scape [local] - <name>"), else any 2009scape
+        window, else the biggest visible window of the game's own process (titles vary with
+        the launcher and the login state)."""
+        hits, loose, by_pid = [], [], []
+        try:
+            from lumberjack.core.agent import find_client_pid
+            pid = find_client_pid()
+        except Exception:
+            pid = None
 
         def cb(h, _):
-            if win32gui.IsWindowVisible(h) and match in win32gui.GetWindowText(h).lower():
+            if not win32gui.IsWindowVisible(h):
+                return
+            title = win32gui.GetWindowText(h).lower()
+            if match in title:
                 hits.append(h)
+            elif "2009scape" in title:
+                loose.append(h)
+            elif pid is not None:
+                import win32process
+                try:
+                    if win32process.GetWindowThreadProcessId(h)[1] == pid:
+                        l, t, r, b = win32gui.GetWindowRect(h)
+                        by_pid.append(((r - l) * (b - t), h))
+                except Exception:
+                    pass
 
         win32gui.EnumWindows(cb, None)
-        return hits[0] if hits else None
+        if hits or loose:
+            return (hits or loose)[0]
+        return max(by_pid)[1] if by_pid else None
 
     @property
     def title(self):

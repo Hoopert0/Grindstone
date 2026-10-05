@@ -598,3 +598,22 @@ def test_skill_check_runs_each_task_once_and_reports(monkeypatch, tmp_path):
     assert "OK   woodcutting" in report and "+350 woodcutting" in report
     assert "FAIL smithing" in report and "no anvil nearby" in report
     assert "skill check done" in ctl.end_reason and ctl.check_results is None
+
+
+def test_autopilot_resumes_as_autopilot(monkeypatch, tmp_path):
+    """Autopilot isn't the saved plan: the marker carries it, so a panel restart resumes it."""
+    marker = tmp_path / "plan_running"
+    monkeypatch.setattr(server, "PLAN_RUNNING", marker)
+    monkeypatch.setattr(server, "load_plan", lambda: server.Plan(steps=[server.PlanStep(task="mining")]))
+    monkeypatch.setattr(server, "_running_plan", server.Plan(autopilot=True, target=70, skip=["agility"]))
+    server._mark_running(-1)
+    started = []
+    monkeypatch.setattr(server.ctl, "start_plan", lambda p, after=-1, ends_at=None: started.append(p) or None)
+    from lumberjack.core import gamestate
+    monkeypatch.setattr(gamestate, "shared", lambda: object())
+    server.resume_plan()
+    for _ in range(50):
+        if started:
+            break
+        threading.Event().wait(0.05)
+    assert started and started[0].autopilot and started[0].target == 70 and started[0].skip == ["agility"]
