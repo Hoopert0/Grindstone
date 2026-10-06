@@ -1812,8 +1812,16 @@ def spawn_item(sp: SpawnIn):
 def update_now():
     """The panel's Update button: get the newest version, then restart the panel on it."""
     from lumberjack import updater
-    if ctl.running:
-        return _reply("Stop the bot first (a plan can update between steps: Plan tab > 'Update between steps')")
+    if ctl.running:                       # look only - installing restarts the panel mid-run
+        version._check()
+        v = version.status()
+        if v.get("check_error"):
+            return _reply(f"Couldn't reach GitHub ({v['check_error']})")
+        if v.get("update"):
+            return {"ok": True, "restarting": False,
+                    "message": f"v{v['latest']} is out - Autopilot/plans install it between steps; "
+                               "otherwise stop the bot and check again"}
+        return {"ok": True, "restarting": False, "message": f"v{v['version']} is the newest"}
     if manual.busy or rec.running:
         return _reply("Wait for the current manual action / map recording to finish")
     r = updater.update()

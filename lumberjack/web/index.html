@@ -138,6 +138,7 @@
   <span id="levels" class="pill" hidden></span>
   <span id="version" class="pill" style="cursor:pointer" title="Bot version (code commits) - click to check GitHub for a newer one now"></span>
   <button id="update" class="pill pause" type="button" hidden title="Download the newest version and restart the panel">update available</button>
+  <button id="checkupd" class="pill" type="button" title="Look on GitHub for a newer version now and install it (the panel restarts on it)">⟳ Check for updates</button>
   <span id="where" class="hint" style="margin:0 0 0 auto"></span>
 </header>
 
@@ -1162,6 +1163,15 @@ $("placesave").onclick = async () => {
 // ---- updating ----
 let updating = false;
 $("version").onclick = () => { $("update").hidden = false; $("update").onclick(); };   // check + update now
+$("checkupd").onclick = async () => {
+  if (updating) return;
+  $("checkupd").disabled = true;
+  $("checkupd").textContent = "checking...";
+  $("update").hidden = false;
+  await $("update").onclick();
+  $("checkupd").textContent = "⟳ Check for updates";
+  $("checkupd").disabled = false;
+};
 $("update").onclick = async () => {
   if (updating) return;
   updating = true;
