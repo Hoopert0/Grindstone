@@ -134,8 +134,8 @@ class Agility(BotBase):
                 lost += 1
                 if lost > LOST_LIMIT:
                     raise StopBot(f"keeps getting lost on the {course['name']}")
-                why = ("off the course" if o is None else "stuck on an obstacle" if tries >= TRIES
-                       else "can't see the next obstacle")
+                why = (f"off the course (at {me['tile']} plane {me.get('plane', 0)})" if o is None
+                       else "stuck on an obstacle" if tries >= TRIES else "can't see the next obstacle")
                 self.to_start(why)
                 tries = misses = 0
                 last = None
@@ -196,8 +196,17 @@ class Agility(BotBase):
             return "miss"
         loc = found[0]
         if not interact.use_option(self.ctx, self.gs, interact.points_for(loc), o["op"], loc["name"]):
+            from lumberjack.core.gamestate import top_entry
+            try:
+                top = top_entry(self.gs.menu())
+            except Exception:
+                top = None
+            self.log.info("Couldn't click %s %s at %s (screen %s, the mouse shows %s) - walking closer",
+                          o["op"], loc["name"], loc["tile"], loc.get("screen"),
+                          f'"{top["verb"]} {top["subject"]}"' if top else "nothing")
             interact.walk_to_tile(self.ctx, self.gs, loc["tile"], arrive=2)   # off screen: get closer
             return "noclick"
+        self.log.info("%s %s", o["op"], loc["name"])
         t0, still = time.monotonic(), None
         while time.monotonic() - t0 < LAND_S:
             self.sleep(0.6)
