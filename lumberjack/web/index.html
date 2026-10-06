@@ -136,7 +136,7 @@
   <span id="pill" class="pill">idle</span>
   <span id="recpill" class="pill rec" hidden>● recording</span>
   <span id="levels" class="pill" hidden></span>
-  <span id="version" class="pill" title="Bot version (code commits). Updates arrive when Grindstone starts, or with the Update button."></span>
+  <span id="version" class="pill" style="cursor:pointer" title="Bot version (code commits) - click to check GitHub for a newer one now"></span>
   <button id="update" class="pill pause" type="button" hidden title="Download the newest version and restart the panel">update available</button>
   <span id="where" class="hint" style="margin:0 0 0 auto"></span>
 </header>
@@ -1161,6 +1161,7 @@ $("placesave").onclick = async () => {
 
 // ---- updating ----
 let updating = false;
+$("version").onclick = () => { $("update").hidden = false; $("update").onclick(); };   // check + update now
 $("update").onclick = async () => {
   if (updating) return;
   updating = true;
@@ -1168,7 +1169,7 @@ $("update").onclick = async () => {
   const j = await post("/api/update", null, null);
   if (!j.ok) { updating = false; $("update").textContent = "update failed"; alert(j.error || "Update failed"); return; }
   $("update").textContent = j.message;
-  if (!j.restarting) { updating = false; return; }
+  if (!j.restarting) { setTimeout(() => { updating = false; }, 6000); return; }   // (shows "up to date" a moment)
   // the panel restarts on the new code: wait until it answers again, then reload the page
   const back = async () => {
     try { const r = await fetch("/api/running", { cache: "no-store" }); if (r.ok) { location.reload(); return; } } catch (e) {}
@@ -1231,7 +1232,7 @@ function connect() {
     const v = st.version || {};
     $("version").textContent = v.version != null ? `v${v.version}` : "v?";
     $("version").title = v.commit ? `Bot version v${v.version} (${v.commit})` + (v.latest != null ? ` - newest on GitHub: v${v.latest}` : "") : "";
-    $("update").hidden = !v.update;
+    $("update").hidden = !v.update && !updating;
     if (v.update && !updating) $("update").textContent = `⬆ Update to v${v.latest}`;
     $("pause").textContent = st.paused ? "Resume" : "Pause";
     $("s-logs").textContent = st.logs;

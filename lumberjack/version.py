@@ -13,7 +13,7 @@ from lumberjack import procs
 REPO = Path(__file__).resolve().parents[1]
 CODE = ["lumberjack", "lumberjack.bat", "setup_pc.ps1", "link_save.ps1",
         ":!lumberjack/assets/templates", ":!lumberjack/assets/maps"]
-CHECK_EVERY_S = 1800              # (each check is a quiet git fetch)
+CHECK_EVERY_S = 600               # (each check is a quiet git fetch)
 
 
 def _git(*args, timeout=10):
