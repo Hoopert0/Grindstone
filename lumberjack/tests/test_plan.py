@@ -309,6 +309,29 @@ def test_long_waits_keep_the_game_awake():
     assert watch.IDLE_NUDGE_S < 300
 
 
+def test_plan_waits_for_the_login_instead_of_failing(monkeypatch):
+    """Started before the game was up / at the login screen: wait (nothing counted), then go."""
+    from lumberjack.core import gamestate
+    ctl = server.BotController()
+    states = iter([None, {"logged_in": False}, {"logged_in": True, "tile": [3222, 3218]}])
+
+    class GS:
+        def player(self, raw=False):
+            return self.cur
+    gs = GS()
+
+    def shared():
+        st = next(states)
+        if st is None:
+            return None
+        gs.cur = st
+        return gs
+    monkeypatch.setattr(gamestate, "shared", shared)
+    monkeypatch.setattr(ctl, "_sleep", lambda s: None)
+    import logging
+    assert ctl._wait_ready(logging.getLogger("t"))
+
+
 def test_retries_share_the_time_limit(monkeypatch):
     ctl, built = runner(monkeypatch, [])
     seen = []

@@ -739,8 +739,12 @@ async function runCheck() {
       list("Will sort itself out", c.fixes || [], "need ok") +
       list("Good to know", c.warnings || [], "need info");
     if (!running) $("start").disabled = (c.errors || []).length > 0;
+    lastCheckErrors = (c.errors || []).length;
   } catch (e) {}
 }
+// a warning from before the game was up (or logged in) clears by itself once it is
+let lastCheckErrors = 0;
+setInterval(() => { if (lastCheckErrors) runCheck(); }, 5000);
 const save = () => {
   clearTimeout(checkTimer);
   checkTimer = setTimeout(runCheck, 300);

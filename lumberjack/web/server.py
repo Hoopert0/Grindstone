@@ -922,11 +922,7 @@ class BotController:
             return "wait for the manual action / map recorder to finish"
         if not plan.steps and not plan.autopilot:
             return "Add at least one step to the plan"
-        from lumberjack.core import gamestate
-        if gamestate.shared() is None:
-            return ("Plans need the game's own data (positions, levels) - restart the game with the "
-                    "Grindstone icon so the add-on is rebuilt")
-        from lumberjack.nav import places as P
+        from lumberjack.nav import places as P     # (no game data yet: the plan waits for it)
         known = P.load()
         missing = [st.place for st in plan.steps if st.place and st.place not in known and st.place != "auto"]
         if missing:
@@ -960,6 +956,8 @@ class BotController:
                 if end and time.time() >= end:
                     log.info("Plan finished - its %g h are up", plan.max_hours or 0)
                     self.end_reason = f"the plan's time limit ({_hours_text(plan.max_hours)}) is up"
+                    break
+                if not self._wait_ready(log):
                     break
                 i = next_step(plan, i, _levels())
                 if i is None:
@@ -1062,6 +1060,8 @@ class BotController:
                     break
                 if n and plan.auto_update and plan.resume:
                     self._maybe_update(log)
+                if not self._wait_ready(log):
+                    break
                 levels = _levels()
                 if not levels:
                     self._doing("waiting for the game")
@@ -1336,6 +1336,37 @@ class BotController:
             _win = None                            # a new client = a new window
         log.info("The game is back")
         self._doing(None)
+        self._wait_ready(log)
+
+    def _wait_ready(self, log):
+        """Until the game answers and we're logged in (the login screen and the welcome screen
+        aren't failures - nothing is counted). False if stopped meanwhile."""
+        from lumberjack.core import gamestate
+        said = False
+        while not self.stop_event.is_set():
+            gs = gamestate.shared()
+            if gs is not None:
+                try:
+                    me = gs.player(raw=True)
+                    if me.get("logged_in", True) and me.get("tile") is not None:
+                        if said:
+                            log.info("In the game - carrying on")
+                            self._doing(None)
+                        return True
+                except gamestate.GameStateError:
+                    pass
+                except Exception:                   # can't tell (an odd answer): don't hold the plan up
+                    return True
+            if not said:
+                log.warning("Waiting for the game to be up and logged in (log in, or turn on Auto login "
+                            "in the Tools tab so it logs in by itself)")
+                said = True
+            self._doing("waiting for the game - log in (or turn on Auto login)")
+            try:
+                self._sleep(5)
+            except RuntimeError:                   # stopped
+                return False
+        return False
 
     def _ctx(self):
         from lumberjack.actions import Ctx
