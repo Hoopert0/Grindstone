@@ -85,6 +85,7 @@ def hunter(f):
     h.inp = types.SimpleNamespace(move=lambda *a, **k: None, close=lambda: None)
     h.caught = h.laid = h.collapsed = h.lay_fails = 0
     h.spot = h.came_from = h.home = None
+    h.tries_on, h.foreign = {}, {}
     h.sleep = lambda s: None
     return h
 
@@ -155,3 +156,17 @@ def test_a_laid_trap_counts_even_when_the_game_doesnt_step_us_off(field, monkeyp
     before = list(field.tile)
     h.tick()
     assert h.laid == 1 and h.lay_fails == 0 and field.tile == before
+
+
+def test_another_hunters_trap_is_left_alone(field, monkeypatch):
+    """A trap that stays as it was after Check/Dismantle isn't ours ("This isn't your trap"):
+    after two tries it's neither checked nor counted, so we lay our own."""
+    h = hunter(field)
+    h.go_to_spot()
+    field.traps.append([19174, [2611, 2927], "Bird snare", ["Dismantle"]])       # someone's collapsed snare
+    monkeypatch.setattr(interact, "use_option", lambda ctx, gs, pts, verb, subject: (300, 200))  # nothing changes
+    h.tick()
+    h.tick()
+    assert (2611, 2927) in h.foreign and h.collapsed == 0
+    caught, failed, laid = h.traps()
+    assert not (caught or failed or laid)

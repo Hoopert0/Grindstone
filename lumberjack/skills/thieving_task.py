@@ -16,8 +16,8 @@ from lumberjack.skills.base import BotBase, StopBot
 
 ATTEMPT_S = 1.9            # a pickpocket takes ~3 ticks
 STUN_S = 5.0               # caught: stunned ~4 s
-NO_TARGET_S = 90
-COMBAT_WAIT_S = 6.0        # still attacked after this long: fight back           # nothing to pickpocket this long -> stop (a plan travels back)
+NO_TARGET_S = 90           # nothing to pickpocket this long -> stop (a plan travels back)
+COMBAT_WAIT_S = 6.0        # still attacked after this long: fight back
 FOOD = "lobster"
 FOOD_SPAWN = 10
 LEVELS = {"man": 1, "woman": 1, "farmer": 10, "al-kharid_warrior": 25, "al_kharid_warrior": 25,

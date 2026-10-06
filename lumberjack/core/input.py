@@ -20,6 +20,7 @@ class AgentInput:
         self.port = port
         self._connect()
         self.pos = (382, 250)
+        self.last_input = time.monotonic()   # the game logs out after 5 min with no mouse/keys
 
     def _connect(self):
         self.sock = socket.create_connection(("127.0.0.1", self.port), timeout=3)
@@ -53,7 +54,17 @@ class AgentInput:
                 self._connect()
         if not reply.startswith("ok"):
             raise RuntimeError(f"agent: {reply}")
+        self.last_input = time.monotonic()
         return reply
+
+    def nudge(self):
+        """A tiny mouse wiggle where the cursor already is: keeps the game's idle logout away
+        during long waits, without leaving an open menu or changing what's hovered much."""
+        x, y = self.pos
+        dx, dy = random.choice([(-2, 0), (2, 0), (0, -2), (0, 2)])
+        self._cmd("move", x + dx, y + dy)
+        time.sleep(0.03)
+        self._cmd("move", x, y)
 
     # ---- mouse -----------------------------------------------------------------------
     def move(self, x, y, steps=None):

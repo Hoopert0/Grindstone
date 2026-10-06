@@ -475,7 +475,20 @@ def drop_known(ctx, gs, slots):
 
 def drop_all(ctx, keep=(), food=False):
     """Drop every item in the backpack (except slot indexes in `keep`). Food ("Eat ...")
-    is only dropped with food=True."""
+    is only dropped with food=True. Only products ever go: with game data they're known by
+    name (dropped straight from the menu), else each slot's hover text is checked first."""
+    from lumberjack.core import backpack, gamestate
+    gs = gamestate.shared()
+    if gs is not None and backpack.slots() is not None:
+        for _ in range(3):
+            inv = backpack.slots() or []
+            slots = [i for i, s in enumerate(inv)
+                     if s["id"] >= 0 and i not in keep and backpack.is_product(s["key"], food)]
+            if not slots:
+                return
+            drop_known(ctx, gs, slots)
+            ctx.sleep(SERVER_TICK)
+        return
     open_tab(ctx, "inventory")
     for _ in range(3):
         slots = [i for i, o in enumerate(inventory.occupied(ctx.grab())) if o and i not in keep]

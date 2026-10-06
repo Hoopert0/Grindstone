@@ -95,9 +95,10 @@ def _clear_dialogs(ctx, gs):
         log.debug("clearing dialogs: %s", e)
 
 
-def teleport(ctx, gs, tile, plane=0):
+def teleport(ctx, gs, tile, plane=0, camera=True):
     """Admin teleport (::tele). True once the game data shows us there - with the standard
-    camera, so what we came for is on screen (an off-screen altar cost Runecrafting its clicks)."""
+    camera, so what we came for is on screen (an off-screen altar cost Runecrafting its clicks).
+    camera=False skips that (a hop we come straight back from)."""
     global teleported_at
     arrived = False
     for attempt in range(2):
@@ -113,6 +114,8 @@ def teleport(ctx, gs, tile, plane=0):
             break
     if not arrived:
         return False
+    if not camera:
+        return True
     try:
         from lumberjack import actions
         actions.reset_camera(ctx)
@@ -131,8 +134,7 @@ def travel(ctx, gs, place, use_tele=True):
         return True
     if use_tele:
         log.info("Teleporting to %s", tile)
-        if teleport(ctx, gs, tile, plane):
-            actions.reset_camera(ctx)
+        if teleport(ctx, gs, tile, plane):             # (it sets the standard camera itself)
             return True
         log.warning("::tele didn't take us there - walking instead")
     d = tiles_apart(gs.player()["tile"], tile)

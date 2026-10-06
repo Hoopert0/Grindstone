@@ -122,8 +122,12 @@ def release():
     return commit_and_push(f"save: {socket.gethostname()} {time.strftime('%Y-%m-%d %H:%M')}")
 
 
-def wait_for_exit(pid):
-    """Block until process `pid` exits. Returns its exit code (None if it couldn't be read)."""
+STILL_RUNNING = "running"
+
+
+def wait_for_exit(pid, timeout_s=None):
+    """Block until process `pid` exits. Returns its exit code (None if it couldn't be read), or
+    STILL_RUNNING when `timeout_s` passed first."""
     import ctypes
     SYNCHRONIZE, QUERY = 0x00100000, 0x1000          # + PROCESS_QUERY_LIMITED_INFORMATION
     k32 = ctypes.windll.kernel32
@@ -131,7 +135,9 @@ def wait_for_exit(pid):
     if not h:
         return None
     try:
-        k32.WaitForSingleObject(h, 0xFFFFFFFF)
+        wait = 0xFFFFFFFF if timeout_s is None else int(timeout_s * 1000)
+        if k32.WaitForSingleObject(h, wait) == 0x102:   # WAIT_TIMEOUT
+            return STILL_RUNNING
         code = ctypes.c_ulong()
         return code.value if k32.GetExitCodeProcess(h, ctypes.byref(code)) else None
     finally:

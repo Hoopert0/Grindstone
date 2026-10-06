@@ -61,9 +61,11 @@ class BotBase:
         plan_checks(self, StopBot)      # plan conditions: target level, stall guard, logged out
         if self.pause_event is not None and self.pause_event.is_set():
             before, self.state = self.state, "paused"
+            from lumberjack.skills.watch import keep_awake
             while self.pause_event.is_set():
                 if self.stop_event is not None and self.stop_event.is_set():
                     raise StopBot("stopped from control panel")
+                keep_awake(self)             # paused for long: still logged in when resumed
                 time.sleep(0.1)
             self.state = before
 

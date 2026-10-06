@@ -59,6 +59,8 @@ MAX_CANDIDATES = 8
 GS_RADIUS = 15                  # tiles searched for rocks in the game's scene data
 GS_IDLE_READS = 7               # ~1 s of "not animating, not walking" = stopped mining
 EMPTY_AFTER_FAILS = 2           # a rock id that gave nothing this often is treated as empty
+RESPAWN_PATIENCE_S = 240        # every rock here mined out (other players too) this long -> stop
+TAKEN_CHECK_S = 0.6             # how often a walk/swing checks the rock is still there
 ROCK_ORES = Path(__file__).resolve().parents[1] / "assets" / "templates" / "rock_ores.json"
 
 
@@ -186,6 +188,8 @@ class Miner(BotBase):
         self.rock_ores = load_rock_ores()
         self.rock_fails = {}             # loc id -> clicks that gave nothing (this run)
         self.last_rock = None            # the loc we clicked last
+        self.dry_since = None            # since when no rock here was free (respawn wait)
+        self.taken = 0                   # rocks someone else emptied before or while we mined
 
     def stats(self):
         hrs = (time.monotonic() - self.started) / 3600
@@ -205,12 +209,7 @@ class Miner(BotBase):
                 self.check_templates()
             self.prepare()
             if self.gs and self.spawn_tools:
-                from lumberjack import items
-                from lumberjack.core import gamestate
-                lv = (gamestate.skill("mining") or {}).get("base", 1)
-                slot = items.ensure(self.ctx, lambda k: k.endswith("pickaxe"), items.best_pickaxe(lv), log=self.log)
-                if slot is not None and slot >= 0:
-                    self.keep_slots = set(self.keep_slots) | {slot}
+                self.ensure_pickaxe()
             if self.walker:
                 from lumberjack.nav.learner import MapLearner
                 self.learner = MapLearner(self.walker, self.win)
@@ -234,6 +233,10 @@ class Miner(BotBase):
                     self.sleep(30)
                     continue
                 hit = self.find_and_click_rock()
+                if not hit and self.gs:
+                    self.wait_for_respawn()          # the scene data sees every rock: no camera sweeps
+                    continue
+                self.dry_since = None
                 if not hit:
                     self.empty_scans += 1
                     self.state = "scanning"
@@ -365,6 +368,35 @@ class Miner(BotBase):
             save_rock_ores(self.rock_ores)
         return gained[0] if len(gained) == 1 else None
 
+    def ensure_pickaxe(self):
+        """The best pickaxe for the level, carried or worn (an old one is swapped for it)."""
+        from lumberjack import items
+        from lumberjack.core import gamestate
+        lv = (gamestate.skill("mining") or {}).get("base", 1)
+        slot = items.ensure_best(self.ctx, items.PICKAXE_ORDER, items.best_pickaxe(lv), log=self.log, gs=self.gs)
+        if slot is not None and slot >= 0:
+            self.keep_slots = set(self.keep_slots) | {slot}
+
+    def rock_gone(self, loc):
+        """True when `loc` (a rock we clicked) is no longer there as it was: emptied."""
+        if not loc:
+            return False
+        here = [l for l in self.gs.locs(GS_RADIUS) if l["tile"] == loc["tile"]]
+        return bool(here) and all(l["id"] != loc["id"] for l in here)
+
+    def wait_for_respawn(self):
+        """No rock we want is free within reach (other players, or we emptied them): wait for
+        them to grow back - up to RESPAWN_PATIENCE_S, then stop so the plan can move on."""
+        now = time.monotonic()
+        if self.dry_since is None:
+            self.dry_since = now
+            self.log.info("No free %s rock in reach (mined out - other players too?) - waiting for respawns",
+                          "/".join(self.active_ores()) or "")
+        elif now - self.dry_since > RESPAWN_PATIENCE_S:
+            raise StopBot(f"no {'/'.join(self.active_ores())} rock free here for {RESPAWN_PATIENCE_S // 60} min")
+        self.state = "waiting for respawn"
+        self.sleep(random.uniform(1.2, 2.4))
+
     def busy_from_game(self):
         if not self.gs:
             return None
@@ -428,10 +460,17 @@ class Miner(BotBase):
         start = time.monotonic()
         started = False
         idle_reads = 0
+        next_look = start + TAKEN_CHECK_S
+        taken = False
         while time.monotonic() - start < timeout:
             frame = self.grab()
             if inventory.count(frame) > before:
                 break                              # one ore per rock - it's depleted now
+            if self.gs and time.monotonic() >= next_look:
+                next_look = time.monotonic() + TAKEN_CHECK_S
+                if self._gs_call(self.rock_gone, self.last_rock):
+                    taken = True                   # someone else emptied it: on to the next one
+                    break
             self.activity.update(frame)
             busy = self.busy_from_game()
             if busy is None:                       # no game data: judge by the picture moving
@@ -446,6 +485,12 @@ class Miner(BotBase):
             self.sleep(0.15)
         self.sleep(SERVER_TICK)
         got = inventory.count(self.grab()) - before
+        if got <= 0 and not taken and self.gs:
+            taken = bool(self._gs_call(self.rock_gone, self.last_rock))
+        if got <= 0 and taken:
+            self.taken += 1
+            self.log.info("That rock was emptied before we got any ore (another player?) - next one")
+            return False                           # not the rock's or the level's fault
         if self.gs:
             learned = self._gs_call(self.learn_rock, ores_before, got)
             if learned:
@@ -460,6 +505,12 @@ class Miner(BotBase):
         self.bad_spots.append((cand.x, cand.y, time.monotonic() + BAD_SPOT_S))
         if not started:
             self.log.info("Nothing happened after clicking - trying another rock")
+            self.no_start = getattr(self, "no_start", 0) + 1
+            if self.no_start >= 3 and self.gs and self.spawn_tools:
+                self.no_start = 0                  # lost the pickaxe (died?) - get one back
+                self.ensure_pickaxe()
+        else:
+            self.no_start = 0
         if known:
             self.fail_streak[ore] = self.fail_streak.get(ore, 0) + 1
             if self.fail_streak[ore] >= BLOCK_AFTER_FAILS and len(self.ores) > 1:

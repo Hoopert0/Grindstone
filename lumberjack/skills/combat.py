@@ -59,6 +59,7 @@ LEVEL_CHECK_KILLS = 15          # re-read levels this often (also after any leve
 EMPTY_ROUNDS_BEFORE_WALK = 2
 APPROACH_WALKS = 3              # minimap walks toward NPC dots before trying saved spots
 GIVE_UP_ROUNDS = 60             # ~5+ minutes with nothing to attack -> stop
+SKIP_TARGET_S = 60              # a monster we couldn't fight (unreachable, taken) is left this long
 MM_PER_TILE = 4                 # minimap px per game tile
 TAKE_ACTION = "take"            # white "Take" before an orange ground-item name
 LOOT_PICKS = 6                  # items picked up from one pile at most
@@ -372,6 +373,9 @@ class Fighter(BotBase):
                 continue
             inv = backpack.slots() or []
             slot = next((i for i, s in enumerate(inv) if s["key"] == key), None)
+            if slot is None and not any(s["id"] < 0 for s in inv):
+                self.drop_outgrown_ranged(bow, arrows, loot=True)
+                inv = backpack.slots() or []
             if slot is None:
                 log.info("Ranged %d: spawning %s", lv, key.replace("_", " "))
                 items.spawn(self.ctx, key, amount)
@@ -384,7 +388,24 @@ class Fighter(BotBase):
             if actions.use_slot(self.ctx, self.gs, slot, "Wield"):
                 log.info("Wielding %s", key.replace("_", " "))
                 self.sleep(0.8)
+        self.drop_outgrown_ranged(bow, arrows)     # the bow it replaced, arrows it can't fire
         self.inp.move(260, 300)
+
+    def drop_outgrown_ranged(self, bow, arrows, loot=False):
+        """Drop bows and arrows other than `bow` and `arrows` from the backpack (and loot, raw and
+        burnt items with loot=True). Returns how many slots were dropped."""
+        from lumberjack import items
+        from lumberjack.core import backpack
+        gear = {b for b, _, _ in items.BOWS} | {a for _, _, a in items.BOWS} | {"bronze_arrow", "iron_arrow"}
+        inv = backpack.slots() or []
+        junk = [i for i, s in enumerate(inv) if s["id"] >= 0 and (
+            (s["key"] in gear and s["key"] not in (bow, arrows)) or
+            (loot and backpack.kind(s["key"]) in ("loot", "raw", "burnt")))]
+        if not junk:
+            return 0
+        log.info("Dropping %d item(s): old bows/arrows%s", len(junk), " and loot" if loot else "")
+        actions.drop_known(self.ctx, self.gs, junk)
+        return len(junk)
 
     def equip_melee(self):
         """With game data + spawning: wear the best scimitar for Attack and the best armour for
@@ -509,11 +530,15 @@ class Fighter(BotBase):
         me = self.gs.player()
         mine = 32768 + me.get("index", -1)
         out = []
+        skip = getattr(self, "skip_until", None) or {}
+        now = time.monotonic()
         for n in self.gs.npcs():
             if key(n["name"]) not in self.targets or "Attack" not in n["ops"]:
                 continue
             if n["interacting"] >= 32768 and n["interacting"] != mine:
                 continue                       # someone else's fight
+            if skip.get(n["index"], 0) > now and n["interacting"] != mine:
+                continue                       # couldn't get a fight going with it just now
             out.append(n)
         out.sort(key=lambda n: (n["interacting"] != mine, n["dist"]))   # ones already on us first
         return out, me
@@ -602,7 +627,11 @@ class Fighter(BotBase):
             self.kill_tile = tuple(npc["tile"])
             if self.npcs_screen_ok(npc):
                 self.kill_point = tuple(npc["screen"])
-            fighting = (me.get("interacting") == npc["index"] or npc["interacting"] == mine)
+            theirs = npc["interacting"] >= 32768 and npc["interacting"] != mine
+            if theirs and not engaged:
+                return "taken"                 # another player got to it first
+            # it faces whoever fights it: facing someone else, its health bar isn't ours
+            fighting = npc["interacting"] == mine or (me.get("interacting") == npc["index"] and not theirs)
             if fighting and (npc["in_combat"] or me.get("in_combat")):
                 engaged, last_fight = True, now
                 low = npc["hp_bar"] if low is None else min(low, npc["hp_bar"])
@@ -671,9 +700,16 @@ class Fighter(BotBase):
         if self.gs and self.target_index is not None:
             result = self._gs_call(self.fight_gs)
             if result is not None:
+                if result in ("no_engage", "taken"):    # (fenced off, out of reach, someone else's)
+                    if not hasattr(self, "skip_until"):
+                        self.skip_until = {}
+                    self.skip_until[self.target_index] = time.monotonic() + SKIP_TARGET_S
                 self.target_index = None
                 if result == "no_engage":
                     log.info("Didn't get into a fight - trying another target")
+                elif result == "taken":
+                    self.taken = getattr(self, "taken", 0) + 1
+                    log.info("Another player is fighting it - trying another target")
                 elif result == "ended":
                     log.info("Fight ended without a kill")
                 else:

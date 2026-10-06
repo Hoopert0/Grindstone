@@ -220,3 +220,49 @@ def test_level_1_never_tries_rocks_above_its_level(monkeypatch, tmp_path):
             {"id": 2090, "ops": ["Mine"], "dist": 4, "name": "Rocks"}]       # copper
     ranked = M.rank_rocks_gs(locs, known, ["copper", "tin"], guess=lambda l: "copper")
     assert [r[2]["id"] for r in ranked] == [2090]
+
+
+def _miner(monkeypatch, gs):
+    m = mining.Miner.__new__(mining.Miner)
+    m.log = __import__("logging").getLogger("t")
+    m.rock_ores, m.rock_fails, m.fail_streak, m.mined, m.blocked = {}, {}, {}, {}, {}
+    m.bad_spots, m.ores, m.taken, m.logs_cut, m.dry_since = [], ["copper", "tin"], 0, 0, None
+    m.gs, m.state = gs, ""
+    clock = {"t": 0.0}
+    monkeypatch.setattr(mining.time, "monotonic", lambda: clock["t"])
+    m.sleep = lambda s: clock.__setitem__("t", clock["t"] + s)
+    m.grab = lambda: None
+    m.activity = types.SimpleNamespace(reset=lambda: None, update=lambda f: None, active=True, filled=False)
+    monkeypatch.setattr(mining.inventory, "count", lambda frame: 5)
+    m._ore_counts = lambda: {}
+    m.active_ores = lambda: ["copper", "tin"]
+    return m, clock
+
+
+def test_a_rock_someone_else_empties_is_left_and_not_blamed(monkeypatch):
+    """Other players mine the same rocks: one emptied while we walk over isn't a failed rock
+    (that blacklisted the whole copper id after two) - we move on at once."""
+    looks = {"n": 0}
+
+    class GS:
+        def locs(self, radius=15, name=None):
+            looks["n"] += 1
+            return [dict(rock(2090 if looks["n"] < 3 else 450, 1))]       # emptied on the 3rd look
+
+        def player(self):
+            return {"anim": -1, "moving": True}
+    m, clock = _miner(monkeypatch, GS())
+    m.last_rock = rock(2090, 1)
+    assert m.mine("copper", types.SimpleNamespace(x=1, y=1, dist=2)) is False
+    assert m.taken == 1 and m.rock_fails == {} and m.fail_streak == {}
+    assert clock["t"] < 5                                  # not the 30 s timeout
+
+
+def test_mined_out_waits_for_respawn_then_stops(monkeypatch):
+    m, clock = _miner(monkeypatch, object())
+    m.wait_for_respawn()
+    assert m.state == "waiting for respawn" and m.dry_since == 0.0
+    clock["t"] = mining.RESPAWN_PATIENCE_S + 1
+    import pytest
+    with pytest.raises(mining.StopBot, match="free here"):
+        m.wait_for_respawn()

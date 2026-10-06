@@ -131,9 +131,8 @@ class Farmer(BotBase):
         if max(abs(me["tile"][0] - x), abs(me["tile"][1] - y)) <= 8:
             return
         self.state = "teleporting to the Falador farm"
-        if not places.teleport(self.ctx, self.gs, (x, y), plane):
+        if not places.teleport(self.ctx, self.gs, (x, y), plane):   # (sets the standard camera)
             raise StopBot(f"couldn't teleport to the Falador farm (::tele {x} {y} {plane})")
-        actions.reset_camera(self.ctx)
 
     # ---- one pass --------------------------------------------------------------------------
     def patches(self):

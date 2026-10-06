@@ -219,3 +219,44 @@ def test_clear_materials_with_game_data_drops_by_name(monkeypatch):
     monkeypatch.setattr(actions, "drop_all", lambda *a, **k: pytest.fail("generic drop with game data"))
     assert actions.clear_materials(types.SimpleNamespace(), food=True) == 3
     assert got == [(gs, [1, 2, 3])]
+
+
+def test_ensure_best_upgrades_the_tool_and_drops_the_old_one(monkeypatch):
+    """A bronze axe at Woodcutting 41 was kept for good ("any axe will do"): now the best axe for
+    the level is spawned and the worse one dropped. A good-enough one (carried or worn) stays."""
+    import types
+    from lumberjack import actions, items
+    from lumberjack.core import backpack
+    inv = [{"id": 1351, "key": "bronze_axe"}, {"id": 1, "key": "logs"}] + [{"id": -1, "key": None}] * 26
+    worn = []
+    monkeypatch.setattr(backpack, "slots", lambda: inv)
+    monkeypatch.setattr(backpack, "worn", lambda: worn)
+    monkeypatch.setattr(items, "spawn", lambda ctx, key, n=1: inv.__setitem__(2, {"id": 1359, "key": key}))
+    dropped = []
+    monkeypatch.setattr(actions, "drop_known", lambda ctx, gs, slots: dropped.extend(slots))
+    ctx = types.SimpleNamespace(sleep=lambda s: None)
+    assert items.ensure_best(ctx, items.AXE_ORDER, items.best_axe(41), gs=object()) == 2
+    assert inv[2]["key"] == "rune_axe" and dropped == [0]
+    assert items.ensure_best(ctx, items.AXE_ORDER, "rune_axe", gs=object()) == -1          # have it
+    inv[2] = {"id": -1, "key": None}
+    worn.append("dragon_axe")
+    assert items.ensure_best(ctx, items.AXE_ORDER, "rune_axe", gs=object()) == -1          # better, worn
+
+
+def test_drop_all_with_game_data_drops_products_by_name(monkeypatch):
+    import types
+    from lumberjack import actions
+    from lumberjack.core import backpack, gamestate
+    inv = [{"id": 1, "key": k} for k in ("bronze_axe", "logs", "oak_logs", "tinderbox", "shrimps")] + \
+        [{"id": -1, "key": None}] * 23
+    monkeypatch.setattr(backpack, "slots", lambda: inv)
+    monkeypatch.setattr(gamestate, "shared", lambda: object())
+    calls = []
+
+    def drop(ctx, gs, slots):
+        calls.append(list(slots))
+        for i in slots:
+            inv[i] = {"id": -1, "key": None}
+    monkeypatch.setattr(actions, "drop_known", drop)
+    actions.drop_all(types.SimpleNamespace(sleep=lambda s: None), keep={2})
+    assert calls == [[1]]                                  # oak logs kept (slot 2), tools and food stay

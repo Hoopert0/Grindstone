@@ -158,6 +158,7 @@
         <div class="stat" id="t-burnt" hidden><b id="s-burnt">0</b><small>fish burnt</small></div>
         <div class="stat" id="t-eaten" hidden><b id="s-eaten">0</b><small>food eaten</small></div>
       </div>
+      <div class="hint" id="health" hidden style="margin:6px 0 0"></div>
       <table class="xp" id="xp" hidden>
         <thead><tr><th>Skill</th><th>Level</th><th>XP gained</th><th>XP / hour</th><th>To next level</th><th>Time to level</th></tr></thead>
         <tbody></tbody>
@@ -1189,6 +1190,19 @@ function connect() {
     else if (pl) $("planstatus").textContent = `Plan step ${pl.step}/${pl.of}: ${pl.task}` + (pl.place ? ` at ${pl.place}` : "") +
       (pl.until ? ` (${pl.until})` : "") + (pl.doing ? ` - ${pl.doing}` : "") + (pl.attempt > 1 ? ` - attempt ${pl.attempt}` : "");
     $("planstart").disabled = busy;
+    const ss = st.session;
+    $("health").hidden = !ss;
+    if (ss) {
+      const dur = ss.elapsed >= 3600 ? `${Math.floor(ss.elapsed / 3600)}h ${Math.floor(ss.elapsed % 3600 / 60)}m`
+        : `${Math.floor(ss.elapsed / 60)} min`;
+      const bits = [`Session ${dur}`, `${ss.runs} run${ss.runs === 1 ? "" : "s"}`];
+      if (ss.recoveries) bits.push(`${ss.recoveries} recovered`);
+      if (ss.deaths) bits.push(`${ss.deaths} death${ss.deaths === 1 ? "" : "s"}`);
+      if (ss.events) bits.push(`${ss.events} random event${ss.events === 1 ? "" : "s"} shaken off`);
+      if (ss.taken) bits.push(`${ss.taken} resource${ss.taken === 1 ? "" : "s"} lost to other players`);
+      if (ss.game_waits) bits.push(`waited for the game ${ss.game_waits}×`);
+      $("health").textContent = "🩺 " + bits.join(" · ") + (ss.last_problem ? ` — last problem: ${ss.last_problem}` : "");
+    }
     $("stopped").hidden = !st.stop_reason;
     $("stopped").textContent = st.stop_reason ? `Last run stopped: ${st.stop_reason}` : "";
     const xp = st.xp || {}, rows = Object.entries(xp);

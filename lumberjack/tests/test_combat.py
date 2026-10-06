@@ -378,6 +378,25 @@ def test_fight_outcomes(monkeypatch):
     assert f.fight_gs() == "no_engage"
 
 
+def test_someone_elses_fight_is_not_ours(monkeypatch):
+    """A cow another player is fighting faces them and shows a health bar: that was taken for our
+    fight (2 min wasted per cow, then a "kill" that wasn't ours). It's left at once, and skipped
+    for a while when picking the next target."""
+    monkeypatch.setattr(combat.actions, "dismiss_dialog", lambda ctx: False)
+    me = {"index": 7, "tile": [3200, 3200], "in_combat": False, "interacting": 2, "moving": False}
+    gs = FakeGS([npc(2, name="Cow", interacting=32768 + 3, in_combat=True, hp=150),
+                 npc(4, name="Cow", dist=5)], me)
+    f = fighter(gs, targets=("cow",))
+    f.target_index = 2
+    assert f.fight_gs() == "taken"
+    f._gs_call = lambda fn, *a: fn(*a)
+    f.target_index, f.last_click, f.kill_tile = 2, None, None
+    assert f.fight() == "taken" and f.taken == 1
+    gs._npcs[0]["interacting"] = -1                      # free again, but we just failed with it
+    targets, _ = f._targets_gs()
+    assert [n["index"] for n in targets] == [4]
+
+
 def test_loot_from_ground_list(monkeypatch):
     """Takes only the wanted items on the drop pile - via the menu row when another item is on
     top - and leaves unwanted items and other piles alone."""

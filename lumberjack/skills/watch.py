@@ -4,7 +4,7 @@
                     a list of skills means all of them (combat: attack, strength, defence)
     stall_limit_s   no progress and no XP for this long -> stop, so the plan can recover
     logged out      wait (state "logged out") until we're back in, instead of failing
-    random events   an event NPC after us (it offers "Dismiss") is dismissed - for every run
+    random events   an event NPC after us is shaken off (skills.events) - for every run
     moved away      we're suddenly far from where we were (died -> Lumbridge, a random event
                     took us somewhere) -> stop with bot.displaced_from set, so the plan / the
                     single-task runner can go back there and carry on - for every run
@@ -26,12 +26,32 @@ def _total_xp(gs):
     return sum(s["xp"] for s in gs.skills().values())
 
 
+IDLE_NUDGE_S = 150      # no input this long (the game logs out at 5 min) -> a tiny mouse wiggle
+
+
+def keep_awake(bot, now=None):
+    """Long waits (traps out, rocks growing back, paused) send no input, and the client logs out
+    after 5 minutes of that: wiggle the mouse a pixel or two before it gets there."""
+    inp = getattr(bot, "inp", None)
+    last = getattr(inp, "last_input", None)
+    now = time.monotonic() if now is None else now
+    if last is None or now - last < IDLE_NUDGE_S:
+        return False
+    try:
+        inp.nudge()
+    except Exception as e:                  # (the game went away - the next checks see to it)
+        log.debug("idle nudge: %s", e)
+        return False
+    return True
+
+
 def plan_checks(bot, stop_cls):
     """Raise stop_cls(reason) when a plan condition says so. Call from check_stop()."""
     now = time.monotonic()
     if now < getattr(bot, "_watch_next", 0.0) or getattr(bot, "_watch_busy", False):
         return
     bot._watch_next = now + CHECK_EVERY_S
+    keep_awake(bot, now)
     level = getattr(bot, "stop_at_level", None)
     stall = getattr(bot, "stall_limit_s", None)
     from lumberjack.core import gamestate
@@ -39,8 +59,9 @@ def plan_checks(bot, stop_cls):
     if gs is None:
         return
     try:
-        bot._watch_busy = True              # dismissing sleeps, and sleeping calls us again
-        dismiss_random_event(bot, gs)
+        bot._watch_busy = True              # dealing with it sleeps, and sleeping calls us again
+        from lumberjack.skills import events
+        events.handle(bot, gs)
     except gamestate.GameStateError:
         return
     finally:
@@ -52,8 +73,8 @@ def plan_checks(bot, stop_cls):
             bot._watch_marker = None
             bot._watch_pos = None
             return
+        check_chat(bot, gs, now, stop_cls)      # first: a death message names the jump that follows
         check_moved(bot, me, now, stop_cls)
-        check_chat(bot, gs, now, stop_cls)
         if level:
             skills, target = level
             skills = [skills] if isinstance(skills, str) else list(skills)
@@ -72,6 +93,7 @@ def plan_checks(bot, stop_cls):
 
 PROBLEM = re.compile(r"\b(need|needs|can't|cannot|can not|already|not enough|don't have|do not have|"
                      r"nothing interesting|unable|too low|must|isn't|is not)\b", re.I)
+DEATH = "oh dear, you are dead"
 REPEAT_LIMIT = 6        # the same refusal this often...
 REPEAT_WINDOW_S = 90.0  # ...within this long: stop, saying it (the bot keeps doing something the game refuses)
 
@@ -100,6 +122,11 @@ def check_chat(bot, gs, now, stop_cls):
     if times is None:
         times = bot._chat_times = {}
     for text in reversed(new):                  # oldest first
+        if text and DEATH in text.lower():
+            bot.deaths = getattr(bot, "deaths", 0) + 1
+            bot.died = True
+            log.warning("Died (%d this run) - we'll be back at the respawn point", bot.deaths)
+            continue
         if not text or not PROBLEM.search(text):
             continue
         hits = [t for t in times.get(text, []) if now - t < REPEAT_WINDOW_S] + [now]
@@ -116,6 +143,12 @@ def check_moved(bot, me, now, stop_cls):
     from lumberjack.nav import places
     tile, plane = me.get("tile"), me.get("plane", 0)
     last = getattr(bot, "_watch_pos", None)
+    if getattr(bot, "died", False):            # gear and supplies are gone: start over, back there
+        bot.died = False
+        bot._watch_pos = None
+        if last is not None:
+            bot.displaced_from = {"tile": list(last[0]), "plane": last[1]}
+        raise stop_cls("died - starting over" + (f" back where we were {list(last[0])}" if last else ""))
     ours = last is not None and places.teleported_at >= last[2] - 1.0   # we ::tele'd since the last check
     if tile is None or "teleport" in str(getattr(bot, "state", "")):
         bot._watch_pos = None
@@ -152,24 +185,3 @@ def _wait_logged_in(bot, gs, stop_cls):
             continue
     log.info("Logged back in")
     bot.state = before
-
-
-def dismiss_random_event(bot, gs):
-    """A random-event NPC that's after us offers "Dismiss" - do that, so it can't teleport us
-    away or get in the way. True if one was dismissed."""
-    ctx = getattr(bot, "ctx", None)
-    if ctx is None:
-        return False
-    me = gs.player()
-    mine = 32768 + me.get("index", -1)
-    for n in gs.npcs():
-        if "Dismiss" not in n["ops"] or n["dist"] > 6:
-            continue
-        if n["interacting"] != mine and n["dist"] > 1:
-            continue
-        from lumberjack.core import interact
-        log.info("Random event: dismissing %s", n["name"])
-        if interact.use_option(ctx, gs, interact.points_for(n), "Dismiss", n["name"]):
-            ctx.sleep(1.2)
-            return True
-    return False

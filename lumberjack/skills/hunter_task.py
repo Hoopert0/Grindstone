@@ -9,6 +9,7 @@
 Traps, creatures and where they live come from the 2009scape server (Traps.java, npc_spawns).
 """
 import random
+import time
 
 from lumberjack import actions, items
 from lumberjack.skills.base import BotBase, StopBot
@@ -30,6 +31,7 @@ JUNK = {526, 9978}                 # bones, raw bird meat
 TRAP_RADIUS = 8
 HOME_RADIUS = 6                    # wandered further than this -> walk back
 FREE_SLOTS = 4
+FOREIGN_S = 600                    # a trap that isn't ours is left alone this long
 
 
 def max_traps(level):
@@ -51,6 +53,8 @@ class Hunter(BotBase):
         self.came_from = None
         self.home = None
         self.lay_fails = 0
+        self.tries_on = {}                  # trap tile -> Check/Dismantle clicks that changed nothing
+        self.foreign = {}                   # trap tile -> until when it's left alone (someone else's)
 
     def progress(self):
         return self.caught
@@ -107,7 +111,10 @@ class Hunter(BotBase):
         """Our traps around us: (caught, collapsed, laid) location lists."""
         t = TRAPS[self.spot[3]]
         caught, failed, laid = [], [], []
+        now = time.monotonic()
         for l in self.gs.locs(TRAP_RADIUS):
+            if self.foreign.get(tuple(l["tile"]), 0) > now:
+                continue                       # another hunter's trap: not ours to check or count
             ops = l.get("ops") or []
             if l["name"] in t["names"] and "Check" in ops:
                 caught.append(l)
@@ -148,6 +155,16 @@ class Hunter(BotBase):
             interact.walk_to_tile(self.ctx, self.gs, loc["tile"], arrive=1)   # off screen: get closer
             return False
         self.sleep(random.uniform(2.4, 3.0))         # walk over + the animation
+        tile = tuple(loc["tile"])
+        if any(tuple(l["tile"]) == tile and l.get("id") == loc.get("id") for l in self.gs.locs(TRAP_RADIUS)):
+            # still there as it was: "This isn't your trap" - twice and it's left alone
+            self.tries_on[tile] = self.tries_on.get(tile, 0) + 1
+            if self.tries_on[tile] >= 2:
+                self.log.info("The trap at %s isn't ours (another hunter's) - leaving it", list(tile))
+                self.foreign[tile] = time.monotonic() + FOREIGN_S
+                self.tries_on.pop(tile, None)
+            return False
+        self.tries_on.pop(tile, None)
         return True
 
     def lay(self, out):

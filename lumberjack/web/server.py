@@ -182,6 +182,7 @@ SPAWN_TASKS = {"cooking": "raw fish", "prayer": "bones", "fletching": "logs and 
                "crafting": "uncut gems and a chisel", "smithing": "bars and a hammer", "magic": "runes",
                "herblore": "unfinished potions and their ingredients", "runecrafting": "pure essence"}
 STEP_RETRIES = 3                      # attempts per step before moving on
+DEATH_LIMIT = 3                       # deaths in one step before moving on (however long it ran)
 CHECK_MINUTES = 2                     # skill check: each task this long
 CHECK_TASKS = ["woodcutting", "fishing", "mining", "combat", "ranged", "magic", "thieving", "slayer",
                "agility", "hunter", "firemaking", "cooking", "prayer", "fletching", "crafting", "smithing",
@@ -730,6 +731,30 @@ class BotController:
         self.check_results = None           # {task: {"xp", "reasons"}} while a skill check runs
         self.last_check = None
         self.plan_ends_at = None
+        self.session = None                 # counters since Start: how the run is holding up
+
+    def _new_session(self):
+        self.session = {"started": time.monotonic(), "runs": 0, "recoveries": 0, "deaths": 0, "events": 0,
+                        "taken": 0, "game_waits": 0, "last_problem": None}
+
+    def _tally(self, bot, reason, good):
+        """Add one finished run to the session's counters."""
+        if self.session is None:
+            self._new_session()
+        ss = self.session
+        ss["runs"] += 1
+        ss["deaths"] += getattr(bot, "deaths", 0) or 0
+        ss["events"] += getattr(bot, "events_handled", 0) or 0
+        ss["taken"] += getattr(bot, "taken", 0) or 0
+        if not good and reason and reason not in ("stopped from control panel", "F12 pressed"):
+            ss["recoveries"] += 1
+            ss["last_problem"] = reason
+
+    def session_status(self):
+        ss = self.session
+        if not ss:
+            return None
+        return {k: v for k, v in ss.items() if k != "started"} | {"elapsed": int(time.monotonic() - ss["started"])}
 
     @property
     def running(self):
@@ -787,6 +812,7 @@ class BotController:
                 if resume and not self.updating:
                     PLAN_RUNNING.unlink(missing_ok=True)
 
+        self._new_session()
         self.thread = threading.Thread(target=run, name="bot", daemon=True)
         self.thread.start()
         return None
@@ -883,6 +909,7 @@ class BotController:
                 self.error = _err_text(e)
                 logging.getLogger(name).exception("Bot crashed")
 
+        self._new_session()
         self.thread = threading.Thread(target=run, name="bot", daemon=True)
         self.thread.start()
         return None
@@ -915,6 +942,7 @@ class BotController:
         global _running_plan
         _running_plan = plan if plan.resume and not plan.check else None
         _mark_running(after, ends_at)
+        self._new_session()
         self.thread = threading.Thread(target=self._run_plan, args=(plan, after), name="plan", daemon=True)
         self.thread.start()
         return None
@@ -1134,7 +1162,7 @@ class BotController:
         first_as_is: the first attempt starts exactly as the user set it up (single-task Start)."""
         from lumberjack.core import gamestate
         from lumberjack.nav import places
-        failures, attempt, back_to, checked = 0, 0, None, False
+        failures, attempt, back_to, checked, deaths = 0, 0, None, False, 0
         deadline = time.monotonic() + s.max_minutes * 60 if s.max_minutes else None
         retries = 1 if self.check_results is not None else STEP_RETRIES     # a check shows failures
         while failures < retries:
@@ -1201,6 +1229,7 @@ class BotController:
             if row["xp"]:
                 log.info("This run: %s in %.0f min", ", ".join(f"+{n:,} {k} xp" for k, n in row["xp"].items()),
                          row["minutes"])
+            self._tally(self.bot, reason, any(reason.startswith(g) for g in GOOD_ENDS))
             if reason == "F12 pressed":
                 self.stop_event.set()              # F12 stops everything, not just this run
             if self.stop_event.is_set():
@@ -1209,6 +1238,11 @@ class BotController:
             if any(reason.startswith(g) for g in GOOD_ENDS):
                 log.info("Done: %s", reason)
                 return True
+            if reason.startswith("died"):
+                deaths += 1
+                if deaths >= DEATH_LIMIT:              # going back would only die again
+                    log.warning("Died %d times on this step - moving on (it's too dangerous for now)", deaths)
+                    return False
             if time.monotonic() - t0 > RESET_AFTER_S:
                 failures = 0                       # it had been going well - a fresh start
             failures += 1
@@ -1293,6 +1327,8 @@ class BotController:
             except Exception:
                 return
         log.warning("The game isn't answering - waiting for it (start it with the Grindstone icon)")
+        if self.session is not None:
+            self.session["game_waits"] += 1
         self._doing("waiting for the game")
         while gamestate.shared() is None:
             self._sleep(5.0)
@@ -1341,13 +1377,18 @@ class BotController:
                     or (i in spare and inv[i]["key"] in backpack.STARTER)]
         if not products and len(spare) < TIDY_SPARE:
             return
+        from lumberjack.core import gamestate
+        gs = gamestate.shared()
+        others = [i for i in spare if i not in products]
+        if gs is not None and len(products) < TIDY_SPARE and len(others) < TIDY_SPARE:
+            log.info("Dropping %d leftover(s) from the last task (not worth a bank trip)", len(products))
+            actions.drop_known(ctx, gs, products)
+            return
         keep = set(full) - set(spare if task else products)
         if bank.gs_bank_trip(ctx, keep_slots=keep):
             log.info("Banked %d item(s) the next task doesn't need", len(full) - len(keep))
         elif products:
             log.info("No bank nearby - dropping %d item(s) from the last task", len(products))
-            from lumberjack.core import gamestate
-            gs = gamestate.shared()
             if gs is not None:                    # picked by name: drop them by name (the generic
                 actions.drop_known(ctx, gs, products)   # drop refuses a starter sword as "not a product")
             else:
@@ -1412,6 +1453,7 @@ class BotController:
             "version": version.status(),
             "plan": self.plan_info,
             "game_data": _game_data_up(),
+            "session": self.session_status(),
         }
         if b:
             el = time.monotonic() - b.started

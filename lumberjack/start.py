@@ -155,6 +155,8 @@ def kill(pid):
 
 
 RESTARTS_PER_HOUR = 3
+PANEL_CHECK_S = 60      # how often the game watcher looks in on the panel
+BOT_RUNNING = savesync.REPO / "lumberjack" / "configs" / "plan_running"   # the panel's "a run is on" marker
 
 
 def stop_bot():
@@ -172,17 +174,42 @@ def watch(client_pid, stop_pids):
     Only a real crash restarts the game - Java wrote a crash report, or the panel's freeze watchdog
     ended a frozen game (at most RESTARTS_PER_HOUR); log back in and the bot carries on. Closing
     the game yourself always quits (and stops a running bot)."""
-    restarts = []
+    restarts, panel_restarts, panel_down = [], [], 0
+    stop_pids = list(stop_pids)
     while True:
-        code = savesync.wait_for_exit(client_pid)
+        code = savesync.wait_for_exit(client_pid, timeout_s=PANEL_CHECK_S)
+        if code == savesync.STILL_RUNNING:
+            # the game is fine: is the panel? A run is on but nobody answers twice in a row (an
+            # update restart takes seconds) -> start it again; it resumes the run by itself
+            panel_down = panel_down + 1 if BOT_RUNNING.exists() and not port_open(PANEL_PORT) else 0
+            panel_restarts = [t for t in panel_restarts if time.time() - t < 3600]
+            if panel_down >= 2 and len(panel_restarts) < RESTARTS_PER_HOUR:
+                panel_down = 0
+                panel_restarts.append(time.time())
+                with open(LOGS / "client.log", "a", encoding="utf-8") as f:
+                    f.write("\n===== the control panel stopped mid-run - starting it again =====\n")
+                try:
+                    start_panel(append=True)
+                except Exception:
+                    pass
+            continue
         crashed = ((LOGS / f"game_crash_{client_pid}.log").exists()     # Java's own crash report
-                   or (LOGS / f"game_frozen_{client_pid}.log").exists())  # the panel's freeze watchdog
+                   or (LOGS / f"game_frozen_{client_pid}.log").exists()   # the panel's freeze watchdog
+                   or (code not in (0, None) and BOT_RUNNING.exists()))   # died mid-run with an error code
         recent = [t for t in restarts if time.time() - t < 3600]
         if crashed and len(recent) < RESTARTS_PER_HOUR:
             with open(LOGS / "client.log", "a", encoding="utf-8") as f:
                 f.write(f"\n===== the game crashed or froze (exit code {code}) - starting it again =====\n")
             restarts = recent + [time.time()]
             time.sleep(5)
+            if not server_up():                   # the server went down with it: that first
+                try:
+                    stop_pids.append(start_server())
+                except Exception as e:
+                    with open(LOGS / "client.log", "a", encoding="utf-8") as f:
+                        f.write(f"\n===== couldn't restart the game server: {e} =====\n")
+                    stop_bot()
+                    break
             client_pid = launch().pid
             continue
         stop_bot()                           # closed on purpose (or crashing over and over): quit

@@ -42,6 +42,8 @@ TREE_BY_NAME = {"tree": "tree", "dead tree": "tree", "evergreen": "tree", "oak":
                 "maple tree": "maple", "yew": "yew", "magic tree": "magic"}
 GS_RADIUS = 18              # tiles searched for trees in the game's scene data
 GS_IDLE_READS = 7           # ~1 s of "not animating, not walking" = stopped chopping
+RESPAWN_PATIENCE_S = 240    # every tree here felled (other players too) this long -> stop
+TAKEN_CHECK_S = 0.6         # how often a walk/chop checks the tree is still standing
 MAX_KEPT = 4                # "keep what I'm carrying" refuses a backpack with more than this
 EMPTY_SCANS_BEFORE_MOVING = 6
 
@@ -106,6 +108,9 @@ class Woodcutter:
         from lumberjack.xp import XpTracker
         self.xp = XpTracker()
         self.bad_spots = []  # (x, y, expiry) screen spots whose hover text wasn't a tree
+        self.last_tree = None  # the loc we clicked last (game data)
+        self.dry_since = None  # since when no tree here was standing (respawn wait)
+        self.taken = 0         # trees felled by someone else before we got a log
 
     # ---- helpers ---------------------------------------------------------------------
     def check_stop(self):
@@ -121,9 +126,11 @@ class Woodcutter:
         plan_checks(self, StopBot)      # plan conditions: target level, stall guard, logged out
         if self.pause_event is not None and self.pause_event.is_set():
             before, self.state = self.state, "paused"
+            from lumberjack.skills.watch import keep_awake
             while self.pause_event.is_set():
                 if self.stop_event is not None and self.stop_event.is_set():
                     raise StopBot("stopped from control panel")
+                keep_awake(self)             # paused for long: still logged in when resumed
                 time.sleep(0.1)
             self.state = before
 
@@ -197,8 +204,7 @@ class Woodcutter:
                 from lumberjack import items
                 from lumberjack.core import gamestate
                 lv = (gamestate.skill("woodcutting") or {}).get("base", 1)
-                slot = items.ensure(self.ctx, lambda k: k.endswith("_axe") and not k.endswith("pickaxe"),
-                                    items.best_axe(lv), log=log)
+                slot = items.ensure_best(self.ctx, items.AXE_ORDER, items.best_axe(lv), log=log, gs=self.gs)
                 if slot is not None and slot >= 0:
                     self.keep_slots = set(self.keep_slots) | {slot}
                     self.axe_spawned = True
@@ -220,6 +226,10 @@ class Woodcutter:
                     self.sleep(30)
                     continue
                 kind = self.find_and_click_tree()
+                if not kind and self.gs:
+                    self.wait_for_respawn()      # the scene data sees every tree: no camera sweeps
+                    continue
+                self.dry_since = None
                 if not kind:
                     self.empty_scans += 1
                     self.state = "scanning"
@@ -309,6 +319,7 @@ class Woodcutter:
         for kind, loc in visible[:4]:
             if interact.use_option(self.ctx, self.gs, interact.points_for(loc), "Chop down", loc["name"]):
                 log.info("Chopping a %s %d tile(s) away", loc["name"].lower(), loc["dist"])
+                self.last_tree = loc
                 return kind
         if trees_ and not visible and not walked:
             kind, loc = trees_[0]
@@ -324,6 +335,25 @@ class Woodcutter:
         self.sleep(0.6)
         while time.monotonic() < end and self.gs.player().get("moving"):
             self.sleep(0.2)
+
+    def tree_gone(self, loc):
+        """True when `loc` (a tree we clicked) no longer stands there: felled (a stump)."""
+        here = [l for l in self.gs.locs(GS_RADIUS) if l["tile"] == loc["tile"]]
+        return bool(here) and not any(l["id"] == loc["id"] and "Chop down" in (l.get("ops") or [])
+                                      for l in here)
+
+    def wait_for_respawn(self):
+        """No tree we want stands within reach (felled - other players too): wait for them to
+        grow back - up to RESPAWN_PATIENCE_S, then stop so the plan can move on."""
+        now = time.monotonic()
+        if self.dry_since is None:
+            self.dry_since = now
+            log.info("No %s tree standing in reach (felled - other players too?) - waiting for them to grow back",
+                     "/".join(self.active_trees()) or "")
+        elif now - self.dry_since > RESPAWN_PATIENCE_S:
+            raise StopBot(f"no {'/'.join(self.trees)} tree standing here for {RESPAWN_PATIENCE_S // 60} min")
+        self.state = "waiting for trees to grow back"
+        self.sleep(random.uniform(1.2, 2.4))
 
     def busy_from_game(self):
         """True while we're animating (chopping) or walking; None without game data."""
@@ -382,8 +412,15 @@ class Woodcutter:
         start = time.monotonic()
         started_moving = False
         idle_reads = 0
+        next_look = start + TAKEN_CHECK_S
+        felled = False
         while time.monotonic() - start < timeout:
             frame = self.grab()
+            if self.gs and self.last_tree and time.monotonic() >= next_look:
+                next_look = time.monotonic() + TAKEN_CHECK_S
+                if self._gs_call(self.tree_gone, self.last_tree):
+                    felled = True                # it fell (to us or someone else): next tree
+                    break
             self.activity.update(frame)
             busy = self.busy_from_game()
             if busy is None:                    # no game data: judge by the picture moving
@@ -405,6 +442,10 @@ class Woodcutter:
             self.fail_streak[kind] = 0
             self.no_start_streak = 0
             log.info("+%d %s log(s) - %s", got, kind, self.stats())
+            return
+        if felled:
+            self.taken += 1
+            log.info("That tree fell before we got a log (another player?) - next one")
             return
         if not started_moving:
             log.info("Nothing happened after clicking - retrying")
@@ -524,6 +565,15 @@ class Woodcutter:
         Spawn the best axe for our Woodcutting level once (it works from the backpack)."""
         from lumberjack import items
         self.no_start_streak = 0
+        if self.gs and self.spawn_tools:            # the game says what we carry: no guessing
+            from lumberjack.core import gamestate
+            lv = (gamestate.skill("woodcutting") or {}).get("base", 1)
+            slot = items.ensure_best(self.ctx, items.AXE_ORDER, items.best_axe(lv), log=log, gs=self.gs)
+            if slot is None:
+                raise StopBot("no axe, and spawning one didn't work (backpack full?)")
+            if slot >= 0:
+                self.keep_slots = set(self.keep_slots) | {slot}
+            return
         if self.axe_spawned or not self.spawn_tools:
             raise StopBot("chopping keeps failing - do you have an axe? (wield one or carry it, "
                           "or turn on 'Spawn missing tools')")

@@ -433,7 +433,11 @@ class Fisher(BotBase):
     def spawn_tool(self, tool):
         """::item the tool and remember what it looks like. Returns its slot or None."""
         from lumberjack import items
+        from lumberjack.core import backpack, gamestate
         before = inventory.occupied(self.grab())
+        if all(before) and gamestate.shared() is not None and backpack.slots() is not None:
+            actions.drop_all(self.ctx, keep=self.keep_slots, food=True)     # fish make room for the tool
+            before = inventory.occupied(self.grab())
         if all(before):
             raise StopBot(f"no room in the backpack for a {tool.replace('_', ' ')}")
         self.state = f"spawning {tool.replace('_', ' ')}"
@@ -447,7 +451,8 @@ class Fisher(BotBase):
             self.log.warning("Spawning %s didn't add anything to the backpack", tool.replace("_", " "))
             return None
         slot = new[0]
-        learn_tool(self.ctx, slot, tool, stack=tool in STACKS)
+        if gamestate.shared() is None:            # the game names it: no picture to learn
+            learn_tool(self.ctx, slot, tool, stack=tool in STACKS)
         return slot
 
     def check_bait(self, occ):

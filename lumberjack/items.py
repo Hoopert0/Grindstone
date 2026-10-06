@@ -248,6 +248,46 @@ def ensure(ctx, have, key, amount=1, log=None):
     return new[0] if new else None
 
 
+AXE_ORDER = ["bronze_axe", "iron_axe", "steel_axe", "black_axe", "mithril_axe", "adamant_axe", "rune_axe",
+             "dragon_axe"]
+PICKAXE_ORDER = ["bronze_pickaxe", "iron_pickaxe", "steel_pickaxe", "mithril_pickaxe", "adamant_pickaxe",
+                 "rune_pickaxe", "dragon_pickaxe"]
+
+
+def ensure_best(ctx, order, best, log=None, gs=None):
+    """With game data: carry (or wear) `best` from the tool ladder `order` - or something better.
+    A worse one only: spawn `best` and drop the worse ones from the backpack (the game uses the
+    best tool we have; the old ones are clutter). Returns the new slot, -1 when we already had
+    it, or None (no game data / nothing appeared)."""
+    from lumberjack.core import backpack
+    rank = {k: i for i, k in enumerate(order)}
+    need = rank.get(best, 0)
+    inv, eq = backpack.slots(), backpack.worn()
+    if inv is None:
+        return None
+    have = [s["key"] for s in inv if s["key"] in rank] + [k for k in eq or [] if k in rank]
+    if any(rank[k] >= need for k in have):
+        return -1
+    worse = [i for i, s in enumerate(inv) if s["key"] in rank]
+    if log:
+        log.info("%s - spawning %s", f"Upgrading from {inv[worse[0]]['key'].replace('_', ' ')}" if worse
+                 else f"No {best.split('_')[-1]}", best.replace("_", " "))
+    free = sum(1 for s in inv if s["id"] < 0)
+    if worse and not free and gs is not None:          # make room with the old one first
+        from lumberjack import actions
+        actions.drop_known(ctx, gs, worse[:1])
+        worse = worse[1:]
+    before = {i for i, s in enumerate(backpack.slots() or []) if s["id"] >= 0}
+    spawn(ctx, best, 1)
+    ctx.sleep(0.6)
+    now = backpack.slots() or []
+    new = [i for i, s in enumerate(now) if s["id"] >= 0 and i not in before]
+    if new and worse and gs is not None:
+        from lumberjack import actions
+        actions.drop_known(ctx, gs, [i for i in worse if now[i]["key"] in rank and i not in new])
+    return new[0] if new else None
+
+
 def fill(ctx, key, want=28):
     """Spawn up to `want` of `key` into the free backpack slots, a few commands if the game gives
     fewer per command (with game data). Returns how many slots it filled."""

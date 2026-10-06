@@ -6,6 +6,8 @@ import time
 import types
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 os.environ.setdefault("USERPROFILE", "/tmp")
 if "lumberjack.core.input" not in sys.modules:
@@ -157,13 +159,13 @@ def test_watch_level_stall_and_logout(monkeypatch):
 
 def test_random_event_dismissed(monkeypatch):
     from lumberjack.core import interact
-    from lumberjack.skills import watch
+    from lumberjack.skills import events
     used = []
     monkeypatch.setattr(interact, "use_option", lambda ctx, gs, pts, verb, name: used.append((verb, name)) or (1, 1))
 
     class GS:
         def player(self):
-            return {"index": 7}
+            return {"index": 7, "tile": [3200, 3200], "plane": 0}
 
         def npcs(self, name=None):
             return [{"name": "Chicken", "ops": ["Attack"], "dist": 1, "interacting": 32775, "screen": [1, 1], "body": [1, 1]},
@@ -172,8 +174,38 @@ def test_random_event_dismissed(monkeypatch):
                     {"name": "Genie", "ops": ["Talk-to", "Dismiss"], "dist": 3, "interacting": 32768 + 2,   # someone else's
                      "screen": [1, 1], "body": [1, 1]}]
     bot = types.SimpleNamespace(ctx=types.SimpleNamespace(sleep=lambda s: None))
-    assert watch.dismiss_random_event(bot, GS())
-    assert used == [("Dismiss", "Sandwich lady")]
+    assert events.handle(bot, GS())
+    assert used == [("Dismiss", "Sandwich lady")] and bot.events_handled == 1
+
+
+def test_random_event_without_dismiss_is_shaken_off(monkeypatch):
+    """This server's events have no Dismiss, but end when we're > 10 tiles away: hop and come back.
+    A borrowed id (the Halloween spider is an ordinary spider) counts only when it came for us,
+    and never when it's what the bot is fighting."""
+    from lumberjack.nav import places
+    from lumberjack.skills import events
+    hops = []
+    monkeypatch.setattr(places, "teleport", lambda ctx, gs, tile, plane=0, camera=True:
+                        hops.append((list(tile), plane, camera)) or True)
+    me = {"index": 7, "tile": [3200, 3200], "plane": 0}
+    npcs = [{"name": "Spider", "id": 61, "ops": ["Attack"], "dist": 6, "interacting": -1},       # just a spider
+            {"name": "Genie", "id": 409, "ops": ["Talk-to"], "dist": 2, "interacting": 32775}]
+
+    class GS:
+        def player(self):
+            return me
+
+        def npcs(self, name=None):
+            return npcs
+    bot = types.SimpleNamespace(ctx=types.SimpleNamespace(sleep=lambda s: None), state="mining")
+    assert events.handle(bot, GS())
+    assert hops == [([3215, 3200], 0, False), ([3200, 3200], 0, False)] and bot.state == "mining"
+    assert not events.handle(bot, GS())                        # not again straight away
+    bot._event_shaken_at = float("-inf")
+    npcs[:] = [{"name": "Spider", "id": 61, "ops": ["Attack"], "dist": 1, "interacting": 32775}]
+    assert events.after_us(npcs[0], 7) and not events.after_us(npcs[0], 7, skip={"spider"})
+    assert not events.after_us({"name": "Spider", "id": 61, "dist": 1, "interacting": -1}, 7)
+    assert not events.after_us({"name": "Man", "id": 1, "dist": 1, "interacting": 32775}, 7)
 
 
 def test_next_step_order_and_skips_reached_steps():
@@ -209,6 +241,72 @@ def test_recovery_goes_back_to_where_we_died(monkeypatch):
     assert ctl._run_with_recovery(s, logging.getLogger("t"), "run", first_as_is=True)
     assert built == ["teleport", "here"]                 # first as set up, then from where we are
     assert travelled == [[3200, 3200]]                   # back to where we died
+
+
+def test_dying_again_and_again_moves_on(monkeypatch):
+    """Deaths end a step after DEATH_LIMIT, however long each run lasted (a long run resets the
+    failure count, so a too-hard place would otherwise be fought forever)."""
+    ctl, built = runner(monkeypatch, ["died - back at the respawn point, 40 tiles from where we were"] * 5)
+    import logging
+    clock = [0.0]
+
+    def mono():
+        clock[0] += 400                                   # every run "went well" for a while
+        return clock[0]
+    monkeypatch.setattr(server.time, "monotonic", mono)
+    assert not ctl._run_with_recovery(server.Settings(task="combat"), logging.getLogger("t"), "run",
+                                      first_as_is=True)
+    assert len(built) == server.DEATH_LIMIT
+
+
+def test_death_message_names_the_jump(monkeypatch):
+    from lumberjack.skills import watch
+
+    class Stop(Exception):
+        pass
+
+    class GS:
+        def __init__(self):
+            self.n = 0
+
+        def chat(self, n):
+            self.n += 1
+            return {"count": self.n, "lines": [{"type": 0, "text": "Oh dear, you are dead!"}]}
+    gs = GS()
+    bot = types.SimpleNamespace(state="fighting")
+    watch.check_chat(bot, gs, 0.0, Stop)                      # first look: where we are
+    watch.check_moved(bot, {"tile": [3000, 3000]}, 100.0, Stop)
+    watch.check_chat(bot, gs, 101.0, Stop)
+    assert bot.deaths == 1 and bot.died
+    try:                                                      # (respawned close by: still a death)
+        watch.check_moved(bot, {"tile": [3005, 3002]}, 110.0, Stop)
+        raise AssertionError("no stop")
+    except Stop as e:
+        assert str(e).startswith("died")
+    assert bot.displaced_from == {"tile": [3000, 3000], "plane": 0} and not bot.died
+
+
+def test_session_counts_recoveries_and_deaths(monkeypatch):
+    ctl, built = runner(monkeypatch, ["died - back at the respawn point, 40 tiles from where we were",
+                                      "no progress for 6 min", "reached level 10 in mining"])
+    import logging
+    ctl._new_session()
+    assert ctl._run_with_recovery(server.Settings(task="mining"), logging.getLogger("t"), "run", first_as_is=True)
+    ss = ctl.session_status()
+    assert ss["runs"] == 3 and ss["recoveries"] == 2 and ss["last_problem"] == "no progress for 6 min"
+    assert ctl.session_status()["elapsed"] >= 0
+
+
+def test_long_waits_keep_the_game_awake():
+    """The client logs out after 5 minutes without mouse or keys: a long wait (traps out, rocks
+    growing back, paused) gets a tiny wiggle well before that, and nothing sooner."""
+    from lumberjack.skills import watch
+    nudges = []
+    inp = types.SimpleNamespace(last_input=1000.0, nudge=lambda: nudges.append(1))
+    bot = types.SimpleNamespace(inp=inp)
+    assert not watch.keep_awake(bot, 1000.0 + 60)
+    assert watch.keep_awake(bot, 1000.0 + watch.IDLE_NUDGE_S + 1) and nudges == [1]
+    assert watch.IDLE_NUDGE_S < 300
 
 
 def test_retries_share_the_time_limit(monkeypatch):
@@ -268,6 +366,20 @@ def test_tidy_banks_what_the_next_task_does_not_use(monkeypatch):
     monkeypatch.setattr(bank, "gs_bank_trip", lambda ctx, keep_slots=(): False)
     ctl._tidy_backpack(None, logging.getLogger("t"), "mining")
     assert drops == [{0, 1, 2, 6, 7}]                    # no bank: drop only products, loot, starter kit
+
+
+def test_tidy_drops_a_few_leftovers_instead_of_a_bank_trip(monkeypatch):
+    from lumberjack import actions, bank
+    from lumberjack.core import backpack, gamestate
+    names = ["bronze_pickaxe", "logs", "oak_logs"] + [None] * 25
+    monkeypatch.setattr(backpack, "slots", lambda: [{"id": 1 if n else -1, "key": n} for n in names])
+    monkeypatch.setattr(gamestate, "shared", lambda: object())
+    monkeypatch.setattr(bank, "gs_bank_trip", lambda ctx, keep_slots=(): pytest.fail("a bank trip for 2 logs"))
+    dropped = []
+    monkeypatch.setattr(actions, "drop_known", lambda ctx, gs, slots: dropped.extend(slots))
+    import logging
+    server.BotController()._tidy_backpack(None, logging.getLogger("t"), "mining")
+    assert dropped == [1, 2]
 
 
 def test_resume_marker(monkeypatch, tmp_path):

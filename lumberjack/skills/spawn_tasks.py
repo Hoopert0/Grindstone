@@ -133,6 +133,13 @@ class SupplyTask(BotBase):
         from lumberjack.core import backpack
         out = {}
         for key in self.TOOLS:
+            inv = backpack.slots() or []
+            if not any(s["key"] == key for s in inv) and not any(s["id"] < 0 for s in inv):
+                # lost it (died?) and the backpack is full of the last load: make room first
+                junk = [i for i, s in enumerate(inv) if s["id"] >= 0 and s["key"] not in self.TOOLS
+                        and s["key"] != "coins" and not self.keep(s["key"])]
+                if junk:
+                    actions.drop_known(self.ctx, self.gs, junk[:1])
             items.ensure(self.ctx, lambda k, key=key: k == key, key, log=self.log)
             inv = backpack.slots() or []
             slot = next((i for i, s in enumerate(inv) if s["key"] == key), None)
@@ -550,7 +557,7 @@ class Runecrafter(SupplyTask):
         self.log.info("Runecrafting %s runes (level %d+) - teleporting to the altar", rune.split("_")[0], lv)
         if not places.teleport(self.ctx, self.gs, (x, y), plane):
             raise StopBot(f"couldn't teleport to the {rune.split('_')[0]} altar (::tele {x} {y} {plane})")
-        actions.reset_camera(self.ctx)              # the altar has to be on screen to click it
+        # (the teleport sets the standard camera: the altar has to be on screen to click it)
         self.altar, self.home = altar, [x, y]
 
     def restock(self, inv, tools):
