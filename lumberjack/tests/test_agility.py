@@ -204,3 +204,14 @@ def test_log_balance_missing_from_the_scene_list_is_clicked_at_its_tile(course, 
     found = a.find(A.GNOME["obstacles"][0], 0)
     assert len(found) == 1 and found[0]["name"] == "Log balance"
     assert found[0]["points"][0] == (258, 186 + 2 * 30)              # (2474, 3435): two tiles north... of us
+
+
+def test_sweep_covers_the_log_when_the_add_on_cant_place_it():
+    near = [{"tile": [x, y], "size": [1, 1], "screen": [258 + (x - 2474) * 30, 186 - (y - 3437) * 30]}
+            for x, y in [(2470, 3437), (2478, 3438), (2472, 3433), (2477, 3432), (2475, 3436)]]
+    fit = interact.screen_fit(near)
+    log = {"id": 2295, "name": "Log balance", "tile": [2474, 3435], "size": [1, 1], "screen": [-1, -1]}
+    pts = A.sweep_points(A.GNOME["obstacles"][0], log, fit, {"tile": [2474, 3437]})
+    assert pts[0] == (258 - A.SWEEP_STEP, 246 - A.SWEEP_STEP) and len(pts) <= 120
+    assert (258, 276) in pts                                 # (2474, 3434), the middle of the log
+    assert A.sweep_points(A.GNOME["obstacles"][0], log, None, {"tile": [2474, 3437]}) == []

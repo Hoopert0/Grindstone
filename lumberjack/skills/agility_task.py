@@ -83,6 +83,35 @@ def on_screen(x, y):
     return interact.on_screen(x, y)
 
 
+SWEEP_STEP = 9              # px between the hover points of a sweep over an unplaced obstacle
+
+
+def sweep_points(o, loc, fit, me):
+    """An obstacle the add-on found but couldn't place on screen: a grid of hover points over
+    every tile it may cover (its known tiles, its footprint, the tiles between it and us), from
+    the tile -> screen map - the model sits somewhere on those tiles, and only hovering its
+    model gives its option. Nearest the obstacle's own tile first."""
+    from lumberjack.core import interact
+    if fit is None:
+        tiles = []
+    else:
+        w, l = (loc.get("size") or [1, 1])[:2]
+        x0, y0 = loc["tile"]
+        n = max(w, l, 1) + 1
+        tiles = [tuple(t) for t in o.get("tiles") or []]
+        tiles += [(x0 + dx, y0 + dy) for dy in range(-n, n + 1) for dx in range(-1, 2)]
+    seen, out = set(), []
+    for tx, ty in tiles:
+        cx, cy = fit(tx, ty)
+        for dy in (-SWEEP_STEP, 0, SWEEP_STEP):
+            for dx in (-SWEEP_STEP, 0, SWEEP_STEP):
+                p = (cx + dx, cy + dy)
+                if p not in seen and interact.on_screen(*p):
+                    seen.add(p)
+                    out.append(p)
+    return out[:120]
+
+
 def best_course(level):
     return max((c for c in COURSES if c["level"] <= level), key=lambda c: c["level"])
 
@@ -222,8 +251,23 @@ class Agility(BotBase):
         if not pts or max(loc.get("size") or [1]) > 1:
             # the add-on couldn't place it (it said [-1, -1]) or it's long (the log balance):
             # its tiles, placed by the objects around it that do have a screen point
-            pts += interact.footprint_points(loc, interact.screen_fit(self.gs.locs(OBSTACLE_RADIUS)))
-        if not interact.use_option(self.ctx, self.gs, pts, o["op"], loc["name"]):
+            locs = self.gs.locs(OBSTACLE_RADIUS)
+            fit = interact.screen_fit(locs)
+            pts += interact.footprint_points(loc, fit)
+            if not interact.valid_screen(loc.get("screen")):
+                pts += sweep_points(o, loc, fit, self.gs.player())
+            if not pts:
+                self.log.info("Can't place %s on screen (too few objects around to measure by)", loc["name"])
+        where = (loc.get("id"), tuple(me["tile"]), plane)
+        good = getattr(self, "good_points", {}).get(where)
+        if good:                                 # what worked from this very tile last lap
+            pts = [good] + pts
+        hit = interact.use_option(self.ctx, self.gs, pts, o["op"], loc["name"])
+        if hit:
+            if not hasattr(self, "good_points"):
+                self.good_points = {}
+            self.good_points[where] = tuple(hit)
+        if not hit:
             from lumberjack.core.gamestate import top_entry
             try:
                 top = top_entry(self.gs.menu())

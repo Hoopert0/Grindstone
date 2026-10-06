@@ -2327,6 +2327,14 @@ LOGIN_FILE = HERE.parents[0] / "configs" / "login.json"     # this PC only (conf
 LOGIN_RETRY_S = 45
 LOGIN_GIVE_UP = 3                   # failed logins in a row -> pause (a wrong password, a locked account)
 LOGIN_PAUSE_S = 1800
+# the server's login replies (the client's login step reads them)
+LOGIN_REPLIES = {3: "wrong username or password", 4: "the account is disabled",
+                 5: "the server says this account is still logged in", 6: "the game was updated - "
+                 "run 'Update singleplayer' in the 2009scape launcher", 7: "the world is full",
+                 8: "the login server is offline", 9: "too many logins from this address",
+                 13: "the server couldn't complete the login", 14: "the server is being updated",
+                 16: "too many login attempts - wait a few minutes", 21: "just left another world - wait"}
+LOGIN_WAIT_REPLIES = {5, 7, 8, 9, 13, 14, 16, 21}
 
 
 def load_login():
@@ -2360,13 +2368,14 @@ def auto_login():
         last_try = time.monotonic()
         log.info("Logging in as %s", cfg["user"])
         end = time.monotonic() + 30
-        state = 10
+        state, reply = 10, None
         while time.monotonic() < end:
             time.sleep(1)
             try:
-                state = gs.login_status().get("state")
+                st = gs.login_status()
             except GameStateError:
                 break
+            state, reply = st.get("state"), st.get("reply", reply)
             if state == 30:
                 break
         if state == 30:
@@ -2374,8 +2383,15 @@ def auto_login():
             fails = 0
             _click_play(gs, log)
             continue
+        why = LOGIN_REPLIES.get(reply)
+        if reply in LOGIN_WAIT_REPLIES:
+            # the server still has us from before the game went down (or it's busy): not our
+            # password - keep trying, it lets go after a minute or so
+            log.warning("Login: %s - trying again in %d s", why or f"server reply {reply}", LOGIN_RETRY_S)
+            continue
         fails += 1
-        log.warning("Login didn't go through (%d of %d)", fails, LOGIN_GIVE_UP)
+        log.warning("Login didn't go through (%d of %d)%s", fails, LOGIN_GIVE_UP,
+                    f": {why or f'server reply {reply}'}" if reply not in (None, -1, 0) else "")
         if fails >= LOGIN_GIVE_UP:
             log.warning("Auto login paused for %d min - check the username and password (Tools tab)",
                         LOGIN_PAUSE_S // 60)
