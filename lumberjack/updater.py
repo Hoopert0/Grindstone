@@ -70,8 +70,11 @@ def update():
             return res
     else:
         br = branch()
-        if _git("fetch", "-q", "origin", br).returncode:
-            res["message"] = "couldn't reach GitHub (offline?)"
+        r = _git("fetch", "-q", "origin", br)
+        if r.returncode:
+            why = (r.stderr or "").strip().splitlines()
+            res["message"] = "couldn't reach GitHub" + (f" ({why[-1][:160]})" if why else " (offline?)") + \
+                " - closing the game and starting Grindstone from its icon updates with a sign-in"
             return res
         if _out("rev-list", "--count", f"HEAD..origin/{br}") in ("0", None):
             res.update(ok=True, message="already up to date")

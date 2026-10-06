@@ -13,7 +13,7 @@ from lumberjack import procs
 REPO = Path(__file__).resolve().parents[1]
 CODE = ["lumberjack", "lumberjack.bat", "setup_pc.ps1", "link_save.ps1",
         ":!lumberjack/assets/templates", ":!lumberjack/assets/maps"]
-CHECK_EVERY_S = 600               # (each check is a quiet git fetch)
+CHECK_EVERY_S = 180               # (each check is a quiet git fetch)
 
 
 def _git(*args, timeout=10):
@@ -32,16 +32,21 @@ def code_version(ref="HEAD"):
 
 
 RUNNING = code_version()          # what this process loaded at start
-_latest = {"t": 0.0, "version": None, "checking": False}
+_latest = {"t": 0.0, "version": None, "checking": False, "error": None}
 
 
 def _check():
     try:
         branch = _git("rev-parse", "--abbrev-ref", "HEAD") or "main"
-        if _git("fetch", "-q", "origin", branch, timeout=30) is not None:
+        r = procs.run(["git", "fetch", "-q", "origin", branch], cwd=REPO, capture_output=True, text=True,
+                      timeout=30)
+        if r.returncode == 0:
             _latest["version"] = code_version(f"origin/{branch}")[0]
-    except (OSError, subprocess.SubprocessError):
-        pass
+            _latest["error"] = None
+        else:
+            _latest["error"] = (r.stderr or "git fetch failed").strip().splitlines()[-1][:200]
+    except (OSError, subprocess.SubprocessError) as e:
+        _latest["error"] = str(e)[:200]
     finally:
         _latest["t"] = time.monotonic()
         _latest["checking"] = False
@@ -55,7 +60,7 @@ def status():
         threading.Thread(target=_check, name="version-check", daemon=True).start()
     n, h = RUNNING
     latest = _latest["version"]
-    return {"version": n, "commit": h, "latest": latest,
+    return {"version": n, "commit": h, "latest": latest, "check_error": _latest.get("error"),
             "update": bool(n is not None and latest is not None and latest > n)}
 
 

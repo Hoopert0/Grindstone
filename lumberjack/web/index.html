@@ -1231,7 +1231,9 @@ function connect() {
     $("recinfo").style.color = st.recording && st.recording.lost ? "var(--red)" : "";
     const v = st.version || {};
     $("version").textContent = v.version != null ? `v${v.version}` : "v?";
-    $("version").title = v.commit ? `Bot version v${v.version} (${v.commit})` + (v.latest != null ? ` - newest on GitHub: v${v.latest}` : "") : "";
+    $("version").title = (v.commit ? `Bot version v${v.version} (${v.commit})` + (v.latest != null ? ` - newest on GitHub: v${v.latest}` : "") : "") +
+      (v.check_error ? `\nCan't check GitHub: ${v.check_error}` : "") + "\nClick to update now";
+    $("version").textContent += v.check_error ? " ⚠" : "";
     $("update").hidden = !v.update && !updating;
     if (v.update && !updating) $("update").textContent = `⬆ Update to v${v.latest}`;
     $("pause").textContent = st.paused ? "Resume" : "Pause";
