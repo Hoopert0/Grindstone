@@ -195,7 +195,12 @@ class Agility(BotBase):
             self.sleep(1.0)
             return "miss"
         loc = found[0]
-        if not interact.use_option(self.ctx, self.gs, interact.points_for(loc), o["op"], loc["name"]):
+        pts = interact.points_for(loc)
+        if not pts or max(loc.get("size") or [1]) > 1:
+            # the add-on couldn't place it (it said [-1, -1]) or it's long (the log balance):
+            # its tiles, placed by the objects around it that do have a screen point
+            pts += interact.footprint_points(loc, interact.screen_fit(self.gs.locs(OBSTACLE_RADIUS)))
+        if not interact.use_option(self.ctx, self.gs, pts, o["op"], loc["name"]):
             from lumberjack.core.gamestate import top_entry
             try:
                 top = top_entry(self.gs.menu())

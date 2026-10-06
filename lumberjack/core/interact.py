@@ -62,12 +62,20 @@ def use_option(ctx, gs, points, verb, subject, settle=(0.08, 0.14)):
 SPREAD_PX = 26           # per extra tile of a big object: how far around its point to also try
 
 
+def valid_screen(pt):
+    """The add-on answers [-1, -1] when it couldn't place something on screen."""
+    return bool(pt) and pt[0] > 0 and pt[1] > 0
+
+
 def points_for(thing):
     """Hover points for a located NPC/loc/item: between ground and body first. A big object
     (an altar, anvil, patch, obstacle - "size" over one tile) gets a spread around those too:
-    its reported point can sit on the floor next to the model ("Walk here")."""
+    its reported point can sit on the floor next to the model ("Walk here"). No usable screen
+    point: no points (a spread around [-1, -1] hovered the top-left corner - "Walk here")."""
+    if not valid_screen(thing.get("screen")):
+        return []
     (gx, gy) = thing["screen"]
-    (bx, by) = thing.get("body", thing["screen"])
+    (bx, by) = thing.get("body") if valid_screen(thing.get("body")) else thing["screen"]
     pts = [((gx + bx) // 2, (gy + by) // 2), (gx, gy - 6), (bx, by), (gx, gy)]
     size = max(thing.get("size") or [1])
     if size > 1:
@@ -75,6 +83,40 @@ def points_for(thing):
         cx, cy = (gx + bx) // 2, (gy + by) // 2
         pts += [(cx + dx, cy + dy) for dy in (-r, 0, r) for dx in (-r, 0, r) if (dx, dy) != (0, 0)]
     return pts
+
+
+def screen_fit(locs):
+    """A tile -> screen map fitted to the one-tile objects the add-on did place on screen (the
+    standard camera is a fixed top-down view, so it's close to linear). None with too few."""
+    import numpy as np
+    pts = [(l["tile"][0], l["tile"][1], l["screen"][0], l["screen"][1]) for l in locs
+           if valid_screen(l.get("screen")) and max(l.get("size") or [1]) == 1 and on_screen(*l["screen"])]
+    if len(pts) < 4:
+        return None
+    a = np.array([[tx, ty, 1.0] for tx, ty, _, _ in pts])
+    coef_x = np.linalg.lstsq(a, np.array([p[2] for p in pts], float), rcond=None)[0]
+    coef_y = np.linalg.lstsq(a, np.array([p[3] for p in pts], float), rcond=None)[0]
+    if np.linalg.matrix_rank(a) < 3:
+        return None
+    return lambda tx, ty: (int(round(coef_x @ [tx, ty, 1.0])), int(round(coef_y @ [tx, ty, 1.0])))
+
+
+def footprint_points(loc, fit):
+    """Screen points over every tile a (big) object covers - both ways round, it may be
+    rotated - centre tiles first. From screen_fit's map."""
+    if fit is None:
+        return []
+    w, l = (loc.get("size") or [1, 1])[:2]
+    x0, y0 = loc["tile"]
+    tiles = {(x0 + i, y0 + j) for i in range(w) for j in range(l)} | \
+            {(x0 + i, y0 + j) for i in range(l) for j in range(w)}
+    cx, cy = x0 + (max(w, l) - 1) / 2, y0 + (max(w, l) - 1) / 2
+    out = []
+    for tx, ty in sorted(tiles, key=lambda t: abs(t[0] - cx) + abs(t[1] - cy)):
+        x, y = fit(tx, ty)
+        if on_screen(x, y):
+            out.append((x, y))
+    return out
 
 
 def walk_toward(ctx, me_tile, tile, frame=None):

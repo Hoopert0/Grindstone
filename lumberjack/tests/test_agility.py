@@ -174,3 +174,19 @@ def test_never_seeing_the_obstacle_logs_and_goes_back(course, monkeypatch, caplo
     with caplog.at_level("INFO"), pytest.raises(StopBot, match="lost"):
         a.loop()
     assert "Tree #1" in caplog.text and "can't see the next obstacle" in caplog.text.lower()
+
+
+def test_an_obstacle_the_add_on_couldnt_place_is_found_from_its_neighbours():
+    """The log balance came back at screen [-1, -1]; the spread around it hovered the top-left
+    corner ("Walk here") forever. Now: no points from a bad screen, and the obstacle's tiles are
+    placed by the objects around it."""
+    bad = {"id": 2295, "name": "Log balance", "tile": [2474, 3430], "size": [1, 6],
+           "screen": [-1, -1], "body": [-1, -1]}
+    assert interact.points_for(bad) == []
+    # one-tile objects with screen points: 30 px per tile, north up, our tile (2474, 3437) at (258, 186)
+    near = [{"tile": [x, y], "size": [1, 1], "screen": [258 + (x - 2474) * 30, 186 - (y - 3437) * 30]}
+            for x, y in [(2470, 3437), (2478, 3438), (2472, 3433), (2477, 3432), (2475, 3436)]]
+    fit = interact.screen_fit(near)
+    pts = interact.footprint_points(bad, fit)
+    assert pts and all(interact.on_screen(x, y) for x, y in pts)
+    assert (258, 186 + 7 * 30 - 2 * 30) in pts or any(abs(x - 258) <= 1 for x, _ in pts)
