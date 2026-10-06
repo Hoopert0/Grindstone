@@ -168,9 +168,15 @@ class SupplyTask(BotBase):
             self.current = self.best_supply(lv)
         if self.current is None:
             raise StopBot(f"nothing left to train {self.skill} on at level {lv}")
+        if self.count({self.current}):              # given another go: what's carried comes first
+            return
         self.state = f"spawning {self.current.replace('_', ' ')}"
+        actions.dismiss_dialog(self.ctx)            # a level-up box swallows the typed ::item
         if not self.spawn_supply(self.current):
-            raise StopBot("couldn't spawn supplies (backpack full of other things?)")
+            self.sleep(1.0)
+            actions.dismiss_dialog(self.ctx)
+            if not self.count({self.current}) and not self.spawn_supply(self.current):
+                raise StopBot("couldn't spawn supplies (backpack full of other things?)")
 
     def walk_home(self):
         from lumberjack.core import interact

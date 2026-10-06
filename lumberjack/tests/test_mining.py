@@ -286,3 +286,16 @@ def test_rocks_that_cant_be_clicked_are_not_mined_out(monkeypatch):
     m.rock_ores = {2090: "empty", 2091: "empty"}                                 # now they're all mined
     assert m.find_and_click_rock_gs(walked=True) is None
     assert m.mined_out()
+
+
+def test_a_long_swing_on_iron_isnt_an_empty_rock(monkeypatch):
+    """Iron at a low level takes a while: a swing that ran out of time without ore mustn't mark
+    the rock id empty (that id is every iron rock - "no iron rocks here" with iron all around)."""
+    class GS:
+        def locs(self, radius=15, name=None):
+            return [rock(11954, 1)]
+    m, clock = _miner(monkeypatch, GS())
+    m.last_rock, m.swung = rock(11954, 1), True
+    m.learn_rock({}, 0)
+    m.learn_rock({}, 0)
+    assert m.rock_fails == {}

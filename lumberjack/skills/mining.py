@@ -61,6 +61,7 @@ GS_IDLE_READS = 7               # ~1 s of "not animating, not walking" = stopped
 EMPTY_AFTER_FAILS = 2           # a rock id that gave nothing this often is treated as empty
 RESPAWN_PATIENCE_S = 240        # every rock here mined out (other players too) this long -> stop
 TAKEN_CHECK_S = 0.6             # how often a walk/swing checks the rock is still there
+SWING_GRACE = 3                 # still swinging at the time limit: wait up to this many times it
 ROCK_ORES = Path(__file__).resolve().parents[1] / "assets" / "templates" / "rock_ores.json"
 
 
@@ -363,8 +364,9 @@ class Miner(BotBase):
         if not (self.gs and loc):
             return None
         if got <= 0:
-            self.rock_fails[loc["id"]] = self.rock_fails.get(loc["id"], 0) + 1
-            return None
+            if not getattr(self, "swung", False):  # swung and swung but no luck yet: still a good
+                self.rock_fails[loc["id"]] = self.rock_fails.get(loc["id"], 0) + 1   # rock (that
+            return None                            # id is every iron rock - it shut them all out)
         after = self._ore_counts()
         gained = [o for o, n in after.items() if n > before_ores.get(o, 0)]
         changed = False
@@ -478,7 +480,9 @@ class Miner(BotBase):
         idle_reads = 0
         next_look = start + TAKEN_CHECK_S
         taken = False
-        while time.monotonic() - start < timeout:
+        swinging = False
+        # still swinging at the time limit (iron at a low level can take a minute): keep going
+        while time.monotonic() - start < (timeout * SWING_GRACE if swinging else timeout):
             frame = self.grab()
             if inventory.count(frame) > before:
                 break                              # one ore per rock - it's depleted now
@@ -494,6 +498,7 @@ class Miner(BotBase):
             else:
                 idle_reads = 0 if busy else idle_reads + 1
                 settled = idle_reads >= GS_IDLE_READS
+            swinging = bool(busy)
             if busy:
                 started = True
             elif settled and (started or time.monotonic() - start > IDLE_GIVE_UP_S):
@@ -501,6 +506,7 @@ class Miner(BotBase):
             self.sleep(0.15)
         self.sleep(SERVER_TICK)
         got = inventory.count(self.grab()) - before
+        self.swung = started
         if got <= 0 and not taken and self.gs:
             taken = bool(self._gs_call(self.rock_gone, self.last_rock))
         if got <= 0 and taken:

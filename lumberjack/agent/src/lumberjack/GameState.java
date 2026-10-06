@@ -453,8 +453,18 @@ final class GameState {
                 if (tile == null) continue;
                 Object[] scenery = (Object[]) get(tile, "scenery");
                 int len = getInt(tile, "sceneryLen");
-                for (int i = 0; i < len && i < scenery.length; i++) {
-                    Object sc = scenery[i];
+                // objects on the tile: scenery (trees, rocks...), and also walls, wall decorations
+                // and ground decorations - some obstacles (a log balance, a rope) are those
+                java.util.List<Object> objs = new java.util.ArrayList<>();
+                for (int i = 0; i < len && i < scenery.length; i++) objs.add(scenery[i]);
+                for (String extra : new String[]{"wall", "wallDecor", "groundDecor"}) {
+                    try {
+                        objs.add(get(tile, extra));
+                    } catch (Exception e) {
+                        // a client without that field - scenery only
+                    }
+                }
+                for (Object sc : objs) {
                     if (sc == null || !seen.add(sc)) continue;
                     try {
                         long key = (Long) get(sc, "key");

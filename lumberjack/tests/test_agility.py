@@ -190,3 +190,17 @@ def test_an_obstacle_the_add_on_couldnt_place_is_found_from_its_neighbours():
     pts = interact.footprint_points(bad, fit)
     assert pts and all(interact.on_screen(x, y) for x, y in pts)
     assert (258, 186 + 7 * 30 - 2 * 30) in pts or any(abs(x - 258) <= 1 for x, _ in pts)
+
+
+def test_log_balance_missing_from_the_scene_list_is_clicked_at_its_tile(course, monkeypatch):
+    """An add-on that only lists scenery never shows the log balance (a ground decoration) - the
+    log: "Can't see the obstacle to Walk-across ... Nearby: ... Obstacle net ..." over and over.
+    Its known tiles are placed on screen from the objects around it."""
+    a = runner(course, monkeypatch)
+    near = [{"id": 1, "name": "Tree", "ops": ["Chop down"], "size": [1, 1], "tile": [x, y], "dist": 3,
+             "screen": [258 + (x - 2474) * 30, 186 - (y - 3437) * 30]}
+            for x, y in [(2470, 3437), (2478, 3438), (2472, 3433), (2477, 3432), (2479, 3436)]]
+    course.locs = lambda radius=15, name=None: near
+    found = a.find(A.GNOME["obstacles"][0], 0)
+    assert len(found) == 1 and found[0]["name"] == "Log balance"
+    assert found[0]["points"][0] == (258, 186 + 2 * 30)              # (2474, 3435): two tiles north... of us

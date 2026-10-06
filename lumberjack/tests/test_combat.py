@@ -558,3 +558,14 @@ def test_old_gear_is_dropped_to_make_room_for_upgrades(monkeypatch):
     for gone in ("bronze_scimitar", "iron_scimitar", "bronze_full_helm", "cowhide", "raw_beef"):
         assert gone not in left, gone
     assert {"iron_platebody", "iron_kiteshield", "bronze_axe", "lobster"} <= set(left)
+
+
+def test_ranged_refills_arrows_when_fights_stop_starting(monkeypatch):
+    """Out of arrows, every attack click does nothing ("Didn't get into a fight" for 40 min):
+    a failed engage in ranged mode checks the quiver."""
+    f = fighter(FakeGS([], {"index": 7, "tile": [3200, 3200]}))
+    f.train, f.target_index, f.last_click, f.kill_tile = "ranged", 5, None, None
+    f._gs_call = lambda fn, *a: "no_engage"
+    refills = []
+    f.equip_ranged = lambda: refills.append(1)
+    assert f.fight() == "no_engage" and refills == [1]

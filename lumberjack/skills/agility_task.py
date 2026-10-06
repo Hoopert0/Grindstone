@@ -35,10 +35,12 @@ GNOME = {
     "level": 1,
     "start": (2474, 3437, 0),
     "obstacles": [
-        {"ids": {2295}, "op": "Walk-across", "area": box(2466, 3435, 2492, 3442, 0)},     # log balance
+        {"ids": {2295}, "op": "Walk-across", "area": box(2466, 3435, 2492, 3442, 0),      # log balance
+         "name": "Log balance", "tiles": [(2474, 3435), (2474, 3434), (2474, 3433)]},
         {"ids": {2285}, "op": "Climb-over", "area": box(2466, 3426, 2480, 3434, 0)},      # net up
         {"ids": {35970}, "op": "Climb", "area": box(2466, 3415, 2480, 3430, 1)},          # tree branch
-        {"ids": {2312}, "op": "Walk-on", "area": box(2466, 3415, 2479, 3425, 2)},         # balancing rope
+        {"ids": {2312}, "op": "Walk-on", "area": box(2466, 3415, 2479, 3425, 2),          # balancing rope
+         "name": "Balancing rope", "tiles": [(2478, 3420), (2479, 3420), (2480, 3420)]},
         {"ids": {2314, 2315}, "op": "Climb-down", "area": box(2480, 3415, 2492, 3425, 2)},
         {"ids": {2286}, "op": "Climb-over", "area": box(2481, 3413, 2495, 3425, 0)},      # net
         # the pipes' far ends (y 3435) only say "You can't do that from here"
@@ -55,7 +57,8 @@ BARBARIAN = {
     "start": (2552, 3556, 0),
     "obstacles": [
         {"ids": {2282}, "op": "Swing-on", "area": box(2542, 3552, 2560, 3562, 0)},       # rope swing
-        {"ids": {2294}, "op": "Walk-across", "area": box(2546, 3544, 2556, 3551, 0)},    # log balance
+        {"ids": {2294}, "op": "Walk-across", "area": box(2546, 3544, 2556, 3551, 0),     # log balance
+         "name": "Log balance", "tiles": [(2550, 3546), (2549, 3546), (2548, 3546)]},
         {"ids": {20211}, "op": "Climb-over", "area": box(2538, 3543, 2545, 3550, 0)},    # net up
         {"ids": {2302}, "op": "Walk-across", "area": box(2535, 3540, 2545, 3555, 1)},    # ledge
         {"names": {"Ladder"}, "op": "Climb-down", "area": box(2525, 3540, 2534, 3555, 1)},
@@ -68,6 +71,16 @@ BARBARIAN = {
     ],
 }
 COURSES = [GNOME, BARBARIAN]
+
+
+def interact_fit(locs):
+    from lumberjack.core import interact
+    return interact.screen_fit(locs)
+
+
+def on_screen(x, y):
+    from lumberjack.core import interact
+    return interact.on_screen(x, y)
 
 
 def best_course(level):
@@ -173,7 +186,17 @@ class Agility(BotBase):
         if found:
             return found
         # a different id in this cache: the option is what counts (nearest first)
-        return sorted((l for l in locs if has_op(l) and placed(l)), key=lambda l: l.get("dist", 0))
+        found = sorted((l for l in locs if has_op(l) and placed(l)), key=lambda l: l.get("dist", 0))
+        if found or not o.get("tiles"):
+            return found
+        # an add-on from before walls/decorations were read doesn't list some obstacles (the log
+        # balance is a ground decoration): its known tiles, placed on screen by what's around
+        fit = interact_fit(locs)
+        pts = [p for p in (fit(*t) for t in o["tiles"]) if on_screen(*p)] if fit else []
+        if not pts:
+            return []
+        return [{"id": min(o["ids"]), "name": o["name"], "ops": [o["op"]], "tile": list(o["tiles"][0]),
+                 "size": [1, 1], "screen": [-1, -1], "points": pts}]
 
     def log_nearby(self, o):
         try:
@@ -195,7 +218,7 @@ class Agility(BotBase):
             self.sleep(1.0)
             return "miss"
         loc = found[0]
-        pts = interact.points_for(loc)
+        pts = list(loc.get("points") or []) + interact.points_for(loc)
         if not pts or max(loc.get("size") or [1]) > 1:
             # the add-on couldn't place it (it said [-1, -1]) or it's long (the log balance):
             # its tiles, placed by the objects around it that do have a screen point

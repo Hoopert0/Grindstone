@@ -314,6 +314,11 @@ def command(key, amount=1):
 def spawn(ctx, key, amount=1):
     """Type the ::item command into chat. Needs a free backpack slot (stackables excepted)."""
     import logging
+    try:                                        # a level-up box open swallows what's typed
+        from lumberjack import actions
+        actions.dismiss_dialog(ctx)
+    except Exception:
+        pass
     ctx.inp.move(260, 300)
     ctx.inp.type_text(command(key, amount), enter=True)
     ctx.sleep(1.2)

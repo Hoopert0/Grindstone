@@ -704,6 +704,8 @@ class Fighter(BotBase):
                     if not hasattr(self, "skip_until"):
                         self.skip_until = {}
                     self.skip_until[self.target_index] = time.monotonic() + SKIP_TARGET_S
+                if result == "no_engage" and getattr(self, "train", None) == "ranged":
+                    self.equip_ranged()                  # out of arrows? (no fight starts without them)
                 self.target_index = None
                 if result == "no_engage":
                     log.info("Didn't get into a fight - trying another target")
