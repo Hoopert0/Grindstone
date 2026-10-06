@@ -255,16 +255,19 @@ class Agility(BotBase):
             return "miss"
         loc = found[0]
         pts = list(loc.get("points") or []) + interact.points_for(loc)
-        if not pts or max(loc.get("size") or [1]) > 1:
-            # the add-on couldn't place it (it said [-1, -1]) or it's long (the log balance):
-            # its tiles, placed by the objects around it that do have a screen point
-            locs = self.gs.locs(OBSTACLE_RADIUS)
-            fit = interact.screen_fit(locs)
-            pts += interact.footprint_points(loc, fit)
-            if not interact.valid_screen(loc.get("screen")):
-                pts += sweep_points(o, loc, fit, self.gs.player())
-            if not pts:
-                self.log.info("Can't place %s on screen (too few objects around to measure by)", loc["name"])
+        if interact.valid_screen(loc.get("screen")):
+            # a tall model (the tree branch) stands above its ground point: up its height too
+            gx, gy = loc["screen"]
+            pts += [(gx + dx, gy - up) for up in range(15, 106, 15) for dx in (0, -10, 10)]
+        # then its tiles, placed by the objects around it that do have a screen point, and a
+        # sweep over them (the rope / log said "Walk here" at their own point, or had none)
+        locs = self.gs.locs(OBSTACLE_RADIUS)
+        fit = interact.screen_fit(locs)
+        pts += interact.footprint_points(loc, fit)
+        pts += sweep_points(o, loc, fit, self.gs.player())
+        pts = list(dict.fromkeys(p for p in pts if interact.on_screen(*p)))
+        if not pts:
+            self.log.info("Can't place %s on screen (too few objects around to measure by)", loc["name"])
         where = (loc.get("id"), tuple(me["tile"]), plane)
         good = getattr(self, "good_points", {}).get(where)
         if good:                                 # what worked from this very tile last lap
