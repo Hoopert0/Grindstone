@@ -215,3 +215,11 @@ def test_sweep_covers_the_log_when_the_add_on_cant_place_it():
     assert pts[0] == (258 - A.SWEEP_STEP, 246 - A.SWEEP_STEP) and len(pts) <= 120
     assert (258, 276) in pts                                 # (2474, 3434), the middle of the log
     assert A.sweep_points(A.GNOME["obstacles"][0], log, None, {"tile": [2474, 3437]}) == []
+
+
+def test_walking_closer_stays_on_the_course():
+    """The net at y 3425 was off screen; walking to its own tile left the net's area ("Off the
+    course (at [2470, 3425])") - the approach stays inside the area, beside it."""
+    net = A.GNOME["obstacles"][1]
+    assert A.approach_tile(net, {"tile": [2471, 3425]}) == [2471, 3426]
+    assert A.next_obstacle(A.GNOME, (2471, 3426), 0)[1] is net

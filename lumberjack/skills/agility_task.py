@@ -83,6 +83,13 @@ def on_screen(x, y):
     return interact.on_screen(x, y)
 
 
+def approach_tile(o, loc):
+    """The tile in the obstacle's area (where we stand before it) nearest the obstacle."""
+    x0, y0, x1, y1, _ = o["area"]
+    tx, ty = loc["tile"]
+    return [min(max(tx, x0), x1), min(max(ty, y0), y1)]
+
+
 SWEEP_STEP = 9              # px between the hover points of a sweep over an unplaced obstacle
 
 
@@ -276,7 +283,9 @@ class Agility(BotBase):
             self.log.info("Couldn't click %s %s at %s (screen %s, the mouse shows %s) - walking closer",
                           o["op"], loc["name"], loc["tile"], loc.get("screen"),
                           f'"{top["verb"]} {top["subject"]}"' if top else "nothing")
-            interact.walk_to_tile(self.ctx, self.gs, loc["tile"], arrive=2)   # off screen: get closer
+            # off screen: get closer - to the course tile nearest it (walking onto the obstacle's
+            # own row left the course: "Off the course" and back to the start)
+            interact.walk_to_tile(self.ctx, self.gs, approach_tile(o, loc), arrive=0, max_clicks=4)
             return "noclick"
         self.log.info("%s %s", o["op"], loc["name"])
         t0, still = time.monotonic(), None
