@@ -40,6 +40,17 @@
   .stat b { display: block; font-size: 20px; font-variant-numeric: tabular-nums;
             overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .stat small { color: var(--muted); }
+  .skills { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+  @media (max-width: 700px) { .skills { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  @media (max-width: 460px) { .skills { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .sk { background: var(--panel2); border-radius: 6px; padding: 6px 8px; min-width: 0; }
+  .sk .top { display: flex; justify-content: space-between; gap: 6px; font-size: 13px; }
+  .sk .top span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+  .sk .top b { font-variant-numeric: tabular-nums; }
+  .sk .bar { height: 4px; background: var(--line); border-radius: 2px; margin-top: 5px; overflow: hidden; }
+  .sk .bar i { display: block; height: 100%; background: var(--gold); }
+  .sk.up .top b { color: var(--green); }
+  .sk.max .bar i { background: var(--green); }
   .row { display: flex; gap: 8px; align-items: center; }
   .row > * { min-width: 0; }
   button { padding: 9px 10px; border-radius: 8px; border: 1px solid var(--line);
@@ -164,6 +175,13 @@
         <thead><tr><th>Skill</th><th>Level</th><th>XP gained</th><th>XP / hour</th><th>To next level</th><th>Time to level</th></tr></thead>
         <tbody></tbody>
       </table>
+    </div>
+    <div class="card" style="margin-top:16px" id="skills-card">
+      <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px">
+        <h2 style="margin:0">Skills</h2>
+        <span class="hint" id="skills-total" style="margin:0"></span>
+      </div>
+      <div id="skills" class="skills"></div>
     </div>
     <div class="card" style="margin-top:16px">
       <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px">
@@ -1358,6 +1376,26 @@ $("lg_save").onclick = async () => {
   if (j.ok) { $("lg_pass").value = ""; $("lgmsg").textContent = "Saved."; loadLogin(); }
 };
 loadLogin();
+
+// ---- skills ----
+async function loadSkills() {
+  try {
+    const j = await (await fetch("/api/skills", { cache: "no-store" })).json();
+    const rows = j.skills || [];
+    $("skills").innerHTML = rows.length ? rows.map(r => `
+      <div class="sk${r.gained ? " up" : ""}${r.level >= 99 ? " max" : ""}" title="${esc(r.name)}: ${r.xp.toLocaleString()} xp` +
+        `${r.next != null ? ` - ${r.next.toLocaleString()} to level ${r.level + 1}` : ""}` +
+        `${r.gained ? ` - +${r.gained.toLocaleString()} xp since the panel started` : ""}` +
+        `${r.boosted !== r.level ? ` - currently ${r.boosted}` : ""}">
+        <div class="top"><span>${esc(r.name[0].toUpperCase() + r.name.slice(1))}</span><b>${r.level}</b></div>
+        <div class="bar"><i style="width:${r.pct}%"></i></div>
+      </div>`).join("") : `<div class="hint">${esc(j.error || "No skills yet")}</div>`;
+    $("skills-total").textContent = rows.length ? `Total level ${j.total} · ${j.total_xp.toLocaleString()} xp` +
+      (j.gained ? ` · +${j.gained.toLocaleString()} today` : "") : "";
+  } catch (e) {}
+}
+loadSkills();
+setInterval(loadSkills, 15000);
 
 loadOptions().then(runCheck);
 loadPlan();

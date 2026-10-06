@@ -822,3 +822,20 @@ def test_chat_logs_problems_and_stops_on_repeats():
     for i in range(watch.REPEAT_LIMIT + 2):                   # spread out: never too often
         gs.say("You can't light a fire here.")
         watch.check_chat(bot2, gs, 100.0 * i, Stop)
+
+
+def test_skills_table_for_the_panel(monkeypatch):
+    from lumberjack.core.gamestate import xp_for_level
+    monkeypatch.setattr(server, "_skills_first", {})
+    raw = {"attack": {"level": 10, "boosted": 12, "xp": xp_for_level(10) + 100},
+           "agility": {"level": 99, "boosted": 99, "xp": 13_100_000},
+           "construction": {"level": 1, "boosted": 1, "xp": 0}}
+    t = server.skills_table(raw)
+    names = [r["name"] for r in t["skills"]]
+    assert names == ["attack", "agility", "construction"]          # the game's skill order
+    att = t["skills"][0]
+    assert att["next"] == xp_for_level(11) - att["xp"] and 0 < att["pct"] < 100 and att["gained"] == 0
+    assert t["skills"][1]["pct"] == 100 and t["skills"][1]["next"] is None
+    assert t["total"] == 109                                         # construction isn't trained here
+    raw["attack"]["xp"] += 50
+    assert server.skills_table(raw)["skills"][0]["gained"] == 50

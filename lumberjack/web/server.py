@@ -1882,6 +1882,40 @@ def running_get():
     return {"running": ctl.running}
 
 
+_skills_first = {}                      # skill -> XP when the panel first saw it (gained "today")
+
+
+def skills_table(raw):
+    """[{name, level, boosted, xp, gained, next, pct}] + totals, from GameState.skills()."""
+    from lumberjack.core.gamestate import SKILLS, xp_for_level
+    rows = []
+    for name in SKILLS:
+        s = raw.get(name)
+        if not s:
+            continue
+        lv, xp = s["level"], s["xp"]
+        _skills_first.setdefault(name, xp)
+        lo, hi = xp_for_level(lv), xp_for_level(lv + 1) if lv < 99 else None
+        pct = 100 if hi is None else max(0, min(100, round(100 * (xp - lo) / max(1, hi - lo))))
+        rows.append({"name": name, "level": lv, "boosted": s.get("boosted", lv), "xp": xp,
+                     "gained": xp - _skills_first[name], "next": None if hi is None else hi - xp, "pct": pct})
+    trained = [r for r in rows if r["name"] not in ("construction", "summoning")]
+    return {"skills": rows, "total": sum(r["level"] for r in trained), "total_xp": sum(r["xp"] for r in rows),
+            "gained": sum(r["gained"] for r in rows)}
+
+
+@app.get("/api/skills")
+def skills_get():
+    from lumberjack.core import gamestate
+    gs = gamestate.shared()
+    if gs is None:
+        return {"skills": [], "error": "no game data - is the game running and logged in?"}
+    try:
+        return skills_table(gs.skills())
+    except gamestate.GameStateError as e:
+        return {"skills": [], "error": str(e)}
+
+
 @app.get("/api/history")
 def history_get(hours: float = 24):
     from lumberjack import history
