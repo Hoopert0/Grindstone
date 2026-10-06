@@ -86,3 +86,22 @@ def test_summoning_spawns_a_backpack_of_ingredients(monkeypatch):
     s.restock(wolf)
     assert dropped == list(range(13))                              # the last load's pouches
     assert spawned == [(12158, 13), (12155, 13), (2859, 13), (12183, 91)] and s.has_load(wolf)
+
+
+def test_construction_goes_back_in_when_clicks_build_nothing(monkeypatch):
+    """6 min of clicking with 0 built: after a run of empty tries it goes in through the portal
+    again, and if that changes nothing either, it stops (Autopilot moves on)."""
+    gs = types.SimpleNamespace(locs=lambda radius=15, name=None: [])
+    c = builder(gs, monkeypatch)
+    c.reentered, c.stop_reason = False, None
+    c.prepare = c.check_stop = lambda: None
+    c.inp = types.SimpleNamespace(close=lambda: None)
+    c.stats = lambda: ""
+    monkeypatch.setattr(gamestate, "shared", lambda: gs)
+    monkeypatch.setattr(actions, "dismiss_dialog", lambda ctx: None)
+    c.tick = lambda: True                       # always "doing something", never building
+    c.in_house = lambda: True
+    entered = []
+    c.enter_house = lambda force=False: entered.append(force)
+    c.run()
+    assert entered == [False, True] and "nothing to build" in c.stop_reason

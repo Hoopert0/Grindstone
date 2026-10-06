@@ -60,6 +60,7 @@ EMPTY_ROUNDS_BEFORE_WALK = 2
 APPROACH_WALKS = 3              # minimap walks toward NPC dots before trying saved spots
 GIVE_UP_ROUNDS = 60             # ~5+ minutes with nothing to attack -> stop
 SKIP_TARGET_S = 60              # a monster we couldn't fight (unreachable, taken) is left this long
+NO_FIGHT_LIMIT = 15            # this many attacks in a row that never start a fight: wrong spot
 MM_PER_TILE = 4                 # minimap px per game tile
 TAKE_ACTION = "take"            # white "Take" before an orange ground-item name
 LOOT_PICKS = 6                  # items picked up from one pile at most
@@ -707,6 +708,10 @@ class Fighter(BotBase):
                 if result == "no_engage" and getattr(self, "train", None) == "ranged":
                     self.equip_ranged()                  # out of arrows? (no fight starts without them)
                 self.target_index = None
+                self.no_fights = getattr(self, "no_fights", 0) + 1 if result == "no_engage" else 0
+                if self.no_fights >= NO_FIGHT_LIMIT:
+                    raise StopBot(f"{self.no_fights} attacks in a row never started a fight here "
+                                  "(out of reach / line of sight?) - giving this spot a rest")
                 if result == "no_engage":
                     log.info("Didn't get into a fight - trying another target")
                 elif result == "taken":

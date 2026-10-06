@@ -43,6 +43,7 @@ BUILT_IDS = set(range(13411, 13418)) | set(range(13418, 13425)) | set(range(1342
 BUILD_BOX = 396
 SLOT_OF = [0, 2, 4, 6, 1, 3, 5]       # the box's slot for a decoration index (BuildingUtils.BUILD_INDEXES)
 HOUSE_RADIUS = 20
+BUSY_LIMIT = 10                 # tries in a row that build/remove nothing before going in again
 
 
 def best_deco(space_id, level):
@@ -58,6 +59,7 @@ class Constructor(BotBase):
         kw.pop("keep_carried", None)
         super().__init__(keep_carried=False, **kw)
         self.built = self.removed = 0
+        self.reentered = False              # went back in through the portal once already
         self.gs = None
 
     def progress(self):
@@ -75,18 +77,27 @@ class Constructor(BotBase):
             if self.gs is None:
                 raise StopBot("Construction needs the game's own data")
             self.enter_house()
-            idle = 0
+            idle = busy = 0
             while True:
                 self.check_stop()
                 actions.dismiss_dialog(self.ctx)
+                done = self.built + self.removed
                 if self.tick():
                     idle = 0
-                    continue
-                idle += 1
+                    busy = 0 if self.built + self.removed > done else busy + 1
+                    if busy < BUSY_LIMIT:
+                        continue
+                    # clicking away (walking up, opening the box) with nothing built or removed:
+                    # out of building mode, or a space we can't reach - go in again / stop
+                    self.log.info("%d tries without building or removing anything", busy)
+                    busy, idle = 0, 6
+                else:
+                    idle += 1
                 if idle >= 6:
-                    if not self.in_house():
-                        self.log.info("Not in the house any more - going back in")
-                        self.enter_house()
+                    if not self.in_house() or not self.reentered:
+                        self.log.info("Not in the house in building mode - going (back) in")
+                        self.reentered = True
+                        self.enter_house(force=True)
                         idle = 0
                         continue
                     raise StopBot("nothing to build or remove in the garden (not in building mode?)")
@@ -107,13 +118,15 @@ class Constructor(BotBase):
         locs = self.gs.locs(HOUSE_RADIUS)
         return any(l.get("id") in SPACES or l.get("id") in BUILT_IDS for l in locs)
 
-    def enter_house(self):
+    def enter_house(self, force=False):
         """Through the Rimmington portal in building mode (buying the house first if need be)."""
         from lumberjack.nav import places
-        if self.in_house():
+        if not force and self.in_house():
+            self.log.info("Already in the house")
             return
         for attempt in range(2):
             self.state = "going to the house portal"
+            self.log.info("Going to the house portal at Rimmington")
             x, y, plane = PORTAL_TILE
             if not places.teleport(self.ctx, self.gs, (x, y), plane):
                 raise StopBot("couldn't teleport to the Rimmington house portal")
@@ -138,6 +151,7 @@ class Constructor(BotBase):
             if not interact.use_option(self.ctx, self.gs, interact.points_for(portal), "Enter", portal["name"]):
                 return False
         if not self.pick_option("building mode", wait_s=6):
+            self.log.info("No 'building mode' option at the portal")
             return False
         for _ in range(20):                     # the house is built on the server: a moment
             self.sleep(0.6)
@@ -408,7 +422,7 @@ class Summoner(BotBase):
                     continue
                 self.fails += 1
                 if self.fails >= 4:
-                    raise StopBot(f"the obelisk won't make {pouch[1].lower()}s (4 tries in a row)")
+                    raise StopBot(f"the obelisk won't make a {pouch[1].lower()} (4 tries in a row)")
         except StopBot as e:
             self.stop_reason = str(e)
             self.log.info("Stopped: %s. %s", e, self.stats())
@@ -478,7 +492,8 @@ class Summoner(BotBase):
         ob = self.obelisk()
         if ob is None:
             return 0
-        self.state = f"infusing {pouch[1].lower()}s"
+        self.state = f"infusing: {pouch[1].lower()}"
+        actions.dismiss_dialog(self.ctx)            # a level-up box swallows the next clicks
         if not interact.use_option(self.ctx, self.gs, interact.points_for(ob), "Infuse-pouch", ob["name"]):
             interact.walk_to_tile(self.ctx, self.gs, ob["tile"], arrive=1, max_clicks=3)
             return 0
@@ -498,6 +513,8 @@ class Summoner(BotBase):
             return 0
         if not widgets.choose(self.ctx, self.gs, item, "Infuse-All", menu=True):
             self.log.info("No Infuse-All for %s", pouch[1])
+            actions.dismiss_dialog(self.ctx)
+            actions.cancel_selection(self.ctx, force=True)      # start the next try afresh
             return 0
         end = time.monotonic() + 6
         while time.monotonic() < end:

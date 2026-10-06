@@ -135,18 +135,24 @@ class Thief(BotBase):
         if base and hp / base >= self.eat_below:
             return
         from lumberjack.core import backpack
-        for _ in range(2):
+        spawned = 0
+        for _ in range(6):
             inv = backpack.slots() or []
             food = [i for i, s in enumerate(inv) if backpack.kind(s["key"]) == "cooked"]
             if food:
                 self.state = "eating"
+                actions.dismiss_dialog(self.ctx)       # a level-up / "you've been stunned" box
+                actions.open_tab(self.ctx, "inventory")
                 if actions.use_slot(self.ctx, self.gs, food[0], "Eat"):
                     self.eaten += 1
                     self.sleep(1.8)
                     self.inp.move(260, 300)
                     return
-            if not self.spawn_tools:
+                self.sleep(1.2)                        # stunned / mid-animation: try again shortly
+                continue
+            if not self.spawn_tools or spawned >= 2:
                 break
+            spawned += 1
             self.make_room(need=FOOD_SPAWN)
             items.fill(self.ctx, FOOD, FOOD_SPAWN)
         raise StopBot(f"HP low ({hp}/{base}) and no food")

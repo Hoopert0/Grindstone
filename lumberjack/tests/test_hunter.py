@@ -30,6 +30,10 @@ class Field:
         self.tile, self.level = [2608, 2927], level
         self.inv = [{"id": -1, "key": None} for _ in range(28)]
         self.traps = []                  # [id, tile, name, ops]
+        self.said = []                   # game messages, oldest first
+
+    def chat(self, n=20):
+        return {"count": len(self.said), "lines": [{"type": 0, "text": t} for t in self.said[::-1][:n]]}
 
     def player(self):
         return {"tile": list(self.tile), "plane": 0}
@@ -86,6 +90,7 @@ def hunter(f):
     h.caught = h.laid = h.collapsed = h.lay_fails = 0
     h.spot = h.came_from = h.home = None
     h.tries_on, h.foreign = {}, {}
+    h.ours, h.cap, h.chat_seen, h.chat_start = set(), None, {}, 0
     h.sleep = lambda s: None
     return h
 
@@ -164,9 +169,35 @@ def test_another_hunters_trap_is_left_alone(field, monkeypatch):
     h = hunter(field)
     h.go_to_spot()
     field.traps.append([19174, [2611, 2927], "Bird snare", ["Dismantle"]])       # someone's collapsed snare
-    monkeypatch.setattr(interact, "use_option", lambda ctx, gs, pts, verb, subject: (300, 200))  # nothing changes
+    def refused(ctx, gs, pts, verb, subject):
+        field.said.append("This isn't your trap!")
+        return 300, 200
+    monkeypatch.setattr(interact, "use_option", refused)              # nothing changes
     h.tick()
     h.tick()
     assert (2611, 2927) in h.foreign and h.collapsed == 0
     caught, failed, laid = h.traps()
     assert not (caught or failed or laid)
+
+
+def test_a_click_that_changes_nothing_doesnt_make_a_trap_foreign(field, monkeypatch):
+    """No "This isn't your trap" from the game: our own trap stays ours (it once got written off,
+    a third went down and the game refused it: "...more than 2 traps")."""
+    h = hunter(field)
+    h.go_to_spot()
+    field.traps.append([19174, [2611, 2927], "Bird snare", ["Dismantle"]])
+    monkeypatch.setattr(interact, "use_option", lambda ctx, gs, pts, verb, subject: (300, 200))
+    for _ in range(4):
+        h.tick()
+    assert not h.foreign
+
+
+def test_the_games_trap_limit_is_respected(field):
+    h = hunter(field)
+    field.level = 40                                    # we'd think 3 traps
+    h.go_to_spot()
+    field.traps = [[19175, [2600, 2927], "Bird snare", ["Dismantle"]],
+                   [19175, [2601, 2927], "Bird snare", ["Dismantle"]]]
+    field.said.append("You don't have a high enough Hunter level to set up more than 2 traps.")
+    h.tick()
+    assert h.cap == 2 and h.laid == 0 and h.state.startswith("waiting")

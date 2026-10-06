@@ -75,9 +75,8 @@ ROUTES = {
     "ranged": [
         (1, "★ Lumbridge chickens", {"targets": ["chicken"]}),
         (5, "★ Lumbridge cows", {"targets": ["cow"]}),
-        (10, "★ Lumbridge goblins", {"targets": ["goblin"]}),
-        (20, "★ Al Kharid warriors", {"targets": ["al-kharid_warrior", "al_kharid_warrior"]}),
-        (30, "★ Edgeville hill giants", {"targets": ["hill_giant"]}),
+        (10, "★ Lumbridge goblins", {"targets": ["goblin"]}),    # (the Al Kharid palace never
+        (30, "★ Edgeville hill giants", {"targets": ["hill_giant"]}),  # let a shot start a fight)
         (45, "★ Ice warriors", {"targets": ["ice_warrior"]}),
         (60, "★ Stronghold ankou", {"targets": ["ankou"]}),
         (75, "★ Fire giants", {"targets": ["fire_giant"]}),

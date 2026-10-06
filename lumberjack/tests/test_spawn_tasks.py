@@ -134,8 +134,13 @@ def test_thief_success_stun_and_eating(game, monkeypatch):
     game.skills_["hitpoints"]["boosted"] = 4                  # below 50%: eat - none, so spawn
     eaten = []
     monkeypatch.setattr(actions, "use_slot", lambda ctx, gs, i, verb: eaten.append(game.inv[i]["key"]) or True)
+    monkeypatch.setattr(actions, "open_tab", lambda ctx, name: None)
     t.ensure_hp()
     assert eaten == ["lobster"] and t.eaten == 1
+    tries = []                                                # stunned: the first Eat doesn't take
+    monkeypatch.setattr(actions, "use_slot", lambda ctx, gs, i, verb: tries.append(verb) or len(tries) > 1)
+    t.ensure_hp()
+    assert tries == ["Eat", "Eat"] and t.eaten == 2
     t.spawn_tools = False
     game.inv = [{"id": -1, "key": None, "name": None} for _ in range(28)]
     with pytest.raises(StopBot):

@@ -55,6 +55,10 @@ class Hunter(BotBase):
         self.lay_fails = 0
         self.tries_on = {}                  # trap tile -> Check/Dismantle clicks that changed nothing
         self.foreign = {}                   # trap tile -> until when it's left alone (someone else's)
+        self.ours = set()                   # tiles we laid a trap on (never someone else's)
+        self.cap = None                     # the game's trap limit, when it told us
+        self.chat_seen = {}                 # text -> chat count when we last looked for it
+        self.chat_start = 0
 
     def progress(self):
         return self.caught
@@ -70,6 +74,10 @@ class Hunter(BotBase):
             self.gs = gamestate.shared()
             if self.gs is None:
                 raise StopBot("Hunter needs the game's own data (it finds its traps in the scene)")
+            try:
+                self.chat_start = self.gs.chat(1).get("count", 0)   # older lines are another run's
+            except Exception:
+                pass
             me = self.gs.player()
             self.came_from = (me["tile"][0], me["tile"][1], me.get("plane", 0))
             while True:
@@ -105,6 +113,7 @@ class Hunter(BotBase):
         if not places.teleport(self.ctx, self.gs, (x, y), plane):
             raise StopBot(f"couldn't teleport to the {creature}s (::tele {x} {y} {plane})")
         self.spot, self.home = spot, (x, y)
+        self.cap = None
 
     # ---- one pass ------------------------------------------------------------------------
     def traps(self):
@@ -143,7 +152,13 @@ class Hunter(BotBase):
             self.state = "walking back"
             interact.walk_to_tile(self.ctx, self.gs, list(self.home), arrive=2)
             return
-        if len(laid) < max_traps(self.level()):
+        if self.said("high enough hunter level to set up more than"):
+            self.cap = len(laid)               # the game counts a trap we lost track of: stop at this
+            self.log.info("The game says that's our trap limit - keeping %d out", len(laid))
+        limit = max_traps(self.level())
+        if self.cap is not None:
+            limit = min(limit, max(1, self.cap))
+        if len(laid) < limit:
             self.lay(len(laid))
             return
         self.state = f"waiting ({len(laid)} trap{'s' if len(laid) != 1 else ''} out)"
@@ -157,7 +172,10 @@ class Hunter(BotBase):
         self.sleep(random.uniform(2.4, 3.0))         # walk over + the animation
         tile = tuple(loc["tile"])
         if any(tuple(l["tile"]) == tile and l.get("id") == loc.get("id") for l in self.gs.locs(TRAP_RADIUS)):
-            # still there as it was: "This isn't your trap" - twice and it's left alone
+            # still there as it was: only the game saying "This isn't your trap" makes it
+            # someone else's (a click that just didn't land on ours is no reason to lay another)
+            if tile in self.ours or not self.said("isn't your trap"):
+                return False
             self.tries_on[tile] = self.tries_on.get(tile, 0) + 1
             if self.tries_on[tile] >= 2:
                 self.log.info("The trap at %s isn't ours (another hunter's) - leaving it", list(tile))
@@ -166,6 +184,18 @@ class Hunter(BotBase):
             return False
         self.tries_on.pop(tile, None)
         return True
+
+    def said(self, text):
+        """Has the game said `text` since we last asked about it? (New chat lines only.)"""
+        try:
+            chat = self.gs.chat(10)
+        except Exception:
+            return False
+        count = chat.get("count", 0)
+        seen = self.chat_seen.get(text, self.chat_start)
+        self.chat_seen[text] = count
+        new = max(0, min(count - seen, 10))
+        return any(text in (l.get("text") or "").lower() for l in chat.get("lines", [])[:new])
 
     def lay(self, out):
         """Lay one more trap where we stand."""
@@ -186,6 +216,7 @@ class Hunter(BotBase):
             return
         self.sleep(random.uniform(2.6, 3.2))
         if self.trap_went_down(iid, len(slots), out, before):
+            self.ours.add(tuple(before))
             self.laid += 1
             self.lay_fails = 0
             return

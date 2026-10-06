@@ -5,6 +5,7 @@
 lumberjack.core.input is replaced by a stub before anything imports it, so loading the
 skill module can never reach the input agent.
 """
+import pytest
 import sys
 import tempfile
 import types
@@ -569,3 +570,21 @@ def test_ranged_refills_arrows_when_fights_stop_starting(monkeypatch):
     refills = []
     f.equip_ranged = lambda: refills.append(1)
     assert f.fight() == "no_engage" and refills == [1]
+
+
+def test_a_spot_where_no_attack_starts_a_fight_is_given_up(monkeypatch):
+    """36 min at Al Kharid warriors with ranged and not one fight: stop so Autopilot moves on."""
+    from lumberjack.skills.base import StopBot
+    f = fighter(FakeGS([], {"index": 7, "tile": [3200, 3200]}))
+    f.train, f.last_click, f.kill_tile = "melee", None, None
+    results = iter(["no_engage"] * 5 + ["kill"] + ["no_engage"] * 20)
+    f._gs_call = lambda fn, *a: next(results)
+    f._count_kill = f.after_kill = lambda *a: None
+    f.sleep = lambda s: None
+    for _ in range(6):                                   # a kill in between resets the count
+        f.target_index = 5
+        f.fight()
+    with pytest.raises(StopBot):
+        for _ in range(combat.NO_FIGHT_LIMIT):
+            f.target_index = 5
+            f.fight()
