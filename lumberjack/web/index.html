@@ -468,6 +468,12 @@
           <label><input id="spawn_tools" type="checkbox" checked>
             Spawn missing tools
             <span class="hint" style="margin:0">(axe / knife / tinderbox / fishing gear via ::item)</span></label>
+          <label title="Applies to single tasks and Autopilot">Training style
+            <select id="train_mode">
+              <option value="quick">⚡ Quick - spawn the materials (fastest XP)</option>
+              <option value="gather">🌲 Gather - get them yourself, two skills at once</option>
+            </select>
+            <span class="hint" style="margin:0" id="train_mode_hint"></span></label>
         </div>
       </div>
       <div class="field">
@@ -721,6 +727,7 @@ function settings() {
     recover: $("recover").checked,
     clear_at_start: $("clear_at_start").checked,
     spawn_tools: $("spawn_tools").checked,
+    train_mode: $("train_mode").value || "quick",
     auto_trees: $("auto_trees").checked,
     task: document.querySelector("input[name=task]:checked")?.value || "woodcutting",
     fm_logs: [...document.querySelectorAll("input[name=fmlog]:checked")].map(el => el.value),
@@ -788,6 +795,8 @@ async function loadOptions() {
   $("recover").checked = s.recover ?? true;
   $("clear_at_start").checked = s.clear_at_start ?? true;
   $("spawn_tools").checked = s.spawn_tools ?? true;
+  $("train_mode").value = s.train_mode || "quick";
+  trainModeHint();
   $("aptarget").value = s.autopilot_target ?? 99;
   renderApSkip(s.autopilot_skip || []);
   loadItems();
@@ -1379,6 +1388,15 @@ $("lg_save").onclick = async () => {
   if (j.ok) { $("lg_pass").value = ""; $("lgmsg").textContent = "Saved."; loadLogin(); }
 };
 loadLogin();
+
+// ---- training style ----
+function trainModeHint() {
+  $("train_mode_hint").textContent = $("train_mode").value === "gather"
+    ? "(fletching chops its own logs, firemaking chops what it burns, fishing and cooking catch the fish and " +
+      "cook them on a fire they chop and light, woodcutting fletches or burns its logs - the other skills spawn as usual)"
+    : "(fletching, firemaking, cooking... get their materials spawned)";
+}
+$("train_mode").addEventListener("change", () => { trainModeHint(); save(); });
 
 // ---- skills ----
 async function loadSkills() {

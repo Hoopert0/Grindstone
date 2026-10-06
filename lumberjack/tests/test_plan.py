@@ -711,6 +711,45 @@ def test_every_task_builds_its_bot(monkeypatch):
         assert names[task] == task
 
 
+def test_gather_mode_turns_tasks_into_their_gathering_bots(monkeypatch):
+    """Training style "gather": fletching/firemaking chop their own logs, cooking fishes its own
+    catch, fishing cooks it, woodcutting fletches or burns - Quick leaves everything as it was."""
+    import sys
+    from lumberjack.skills import base, woodcutting  # noqa: F401
+    for name, mod in list(sys.modules.items()):
+        if name.startswith("lumberjack.skills.") and hasattr(mod, "GameWindow"):
+            monkeypatch.setattr(mod, "GameWindow", lambda *a, **k: None)
+            monkeypatch.setattr(mod, "AgentInput", lambda *a, **k: types.SimpleNamespace(close=lambda: None))
+    monkeypatch.setattr(server, "_levels", lambda: {"fletching": 20, "firemaking": 5})
+    ctl = server.BotController()
+    g = lambda task: ctl.build_bot(server.Settings(task=task, map=None, train_mode="gather"))   # noqa: E731
+    assert type(g("fletching")).__name__ == "Woodcutter" and g("fletching").when_full == "fletch"
+    assert g("firemaking").when_full == "burn"
+    assert g("woodcutting").when_full == "burn"                  # firemaking (5) is the lower one
+    cook = g("cooking")
+    assert type(cook).__name__ == "FishCooker" and cook.cook_enabled
+    quick = ctl.build_bot(server.Settings(task="fletching", map=None))
+    assert type(quick).__name__ != "Woodcutter"
+    assert server.gather_route("fletching", "gather") == "woodcutting"
+    assert server.gather_route("fletching", "quick") == "fletching"
+    assert server.gather_settings(server.Settings(task="prayer", train_mode="gather")) == {}
+
+
+def test_gather_step_trains_at_the_gathering_spot(monkeypatch):
+    """A gather-mode fletching step goes to the woodcutting route's place for the lower of the two
+    levels (logs it can cut and fletch), and still stops at the fletching target."""
+    ctl, built = runner(monkeypatch, [])
+    monkeypatch.setattr(server, "load_settings", lambda: server.Settings(train_mode="gather"))
+    monkeypatch.setattr(server, "_levels", lambda: {"woodcutting": 31, "fletching": 16})
+    seen = []
+    monkeypatch.setattr(ctl, "_run_with_recovery", lambda s, log, label, place=None, place_name=None,
+                        teleport=True, level=None: seen.append((s.task, place_name, s.trees, level)) or True)
+    import logging
+    assert ctl._run_step(server.PlanStep(task="fletching", place="auto", level=20, minutes=None),
+                         server.Plan(), logging.getLogger("t"))
+    assert seen == [("fletching", "★ Lumbridge trees", ["oak", "tree"], 20)]
+
+
 def test_autopilot_surfaces_before_a_placeless_step(monkeypatch):
     from lumberjack.core.gamestate import SKILLS
     ctl, built = runner(monkeypatch, [])

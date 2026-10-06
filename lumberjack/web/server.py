@@ -63,6 +63,7 @@ class Settings(BaseModel):
     fm_logs: list[str] = ["willow_logs", "oak_logs", "logs"]
     burn_spot: str | None = None
     trees: list[str] = ["tree"]   # allowed types; the bot chops the best one available
+    train_mode: str = "quick"         # "quick" (spawn the materials) | "gather" (gather them: two skills at once)
     when_full: str = "drop"
     drop_at: int = 28
     max_minutes: float | None = None
@@ -240,6 +241,35 @@ AUTOPILOT_OPTIONS = {"when_full": "drop", "mine_full": "drop", "cook": True, "co
                      "start_spot": None}
 
 
+# "gather" training: these tasks get their materials themselves - at the gathering skill's route
+GATHER_ROUTE = {"fletching": "woodcutting", "firemaking": "woodcutting", "cooking": "fishing"}
+
+
+def gather_settings(s, levels=None):
+    """Settings changes that make s.task gather its own materials (train_mode "gather"), or {}.
+    The bot then is the gathering one (a woodcutter that fletches/burns, a fisher that cooks)."""
+    if getattr(s, "train_mode", "quick") != "gather":
+        return {}
+    if s.task == "fletching":
+        return {"task": "woodcutting", "when_full": "fletch"}
+    if s.task == "firemaking":
+        return {"task": "woodcutting", "when_full": "burn"}
+    if s.task == "cooking":
+        return {"task": "fishing", "cook": True, "cooked_action": "drop"}
+    if s.task == "fishing":
+        return {"cook": True, "cooked_action": "drop"}
+    if s.task == "woodcutting":
+        lv = levels if levels is not None else _levels()
+        lower = "fletch" if lv.get("fletching", 1) <= lv.get("firemaking", 1) else "burn"
+        return {"when_full": lower}
+    return {}
+
+
+def gather_route(task, mode):
+    """The training route a task follows: its gathering skill's in "gather" mode."""
+    return GATHER_ROUTE.get(task, task) if mode == "gather" else task
+
+
 def step_level(step, levels):
     """The step's skill level (combat: the lowest of attack/strength/defence), or None."""
     have = [levels[k] for k in TASK_LEVEL_SKILLS.get(step.task, [step.task]) if k in levels]
@@ -305,6 +335,15 @@ def preflight(s: "Settings"):
     from lumberjack.core import agent
     from lumberjack.ui import mouseover
     errors, fixes, warnings = [], [], []
+    mesh = gather_settings(s, levels={})
+    if mesh:
+        fixes.append({"fletching": "Gather mode: chops logs at the woodcutting spot for your level and fletches them.",
+                      "firemaking": "Gather mode: chops logs and burns them.",
+                      "cooking": "Gather mode: fishes and cooks the catch on a fire it chops and lights.",
+                      "fishing": "Gather mode: cooks the catch on a fire it chops and lights.",
+                      "woodcutting": "Gather mode: fletches or burns the logs (whichever skill is lower)."}
+                     .get(s.task, "Gather mode"))
+        s = s.model_copy(update=mesh)
 
     # the game
     try:
@@ -672,6 +711,9 @@ class LogBuffer(logging.Handler):
 def task_problem(s: Settings):
     """Task-specific reasons not to start (beyond preflight), or None."""
     from lumberjack.ui import mouseover
+    mesh = gather_settings(s, levels={})
+    if mesh:                                       # gather mode: judged as the bot that will run
+        s = s.model_copy(update=mesh)
     if s.task == "firemaking" and _fm_spawns(s):
         return None
     if s.task in SPAWN_TASKS:
@@ -838,6 +880,9 @@ class BotController:
 
     def build_bot(self, s: Settings):
         """The bot for s.task, wired to this controller's stop/pause events."""
+        mesh = gather_settings(s)
+        if mesh:                                   # gather mode: the gathering bot does both skills
+            s = s.model_copy(update=mesh)
         common = dict(max_minutes=s.max_minutes, stop_event=self.stop_event, pause_event=self.pause_event,
                       start_mode=s.start_mode, start_spot=s.start_spot, clear_at_start=s.clear_at_start)
         if s.task == "firemaking":
@@ -1106,7 +1151,7 @@ class BotController:
                     left = max(0.1, (end - time.time()) / 60)
                     minutes = left if minutes is None else min(minutes, left)
                 n += 1
-                place = training.AUTO if training.has_route(task) else None
+                place = training.AUTO if training.has_route(gather_route(task, load_settings().train_mode)) else None
                 if place is None and training.underground(_my_tile()):
                     place = training.SURFACE       # e.g. cooking after hill giants: fires won't light below
                 step = PlanStep(task=task, minutes=minutes, level=until, options=dict(AUTOPILOT_OPTIONS),
@@ -1143,7 +1188,8 @@ class BotController:
                                                   "start_mode": "here", "start_spot": None})
         own = {k: v for k, v in (step.options or {}).items() if k in STEP_OPTIONS}
         deadline = time.monotonic() + step.minutes * 60 if step.minutes else None
-        auto = step.place == training.AUTO and training.has_route(step.task)
+        route = gather_route(step.task, base.train_mode)
+        auto = step.place == training.AUTO and training.has_route(route)
         ok = False
         while not self.stop_event.is_set():
             left = None
@@ -1153,11 +1199,15 @@ class BotController:
                     return ok
             update, place_name, level = dict(own), step.place, step.level
             if auto:
-                lv = step_level(step, _levels())
-                place_name, tier = training.pick(step.task, lv)
+                levels = _levels()
+                lv = step_level(step, levels)
+                if route != step.task:             # gather: the gathering skill picks the spot; trees
+                    rl = step_level(PlanStep(task=route), levels)    # that can be burnt/fletched too
+                    lv = min(x for x in (lv, rl) if x is not None) if (lv or rl) else None
+                place_name, tier = training.pick(route, lv)
                 update = {**tier, **own}
-                nxt = [t[0] for t in training.ROUTES[step.task] if lv is not None and t[0] > lv]
-                if nxt and (level is None or nxt[0] < level):
+                nxt = [t[0] for t in training.ROUTES[route] if lv is not None and t[0] > lv]
+                if route == step.task and nxt and (level is None or nxt[0] < level):
                     level = nxt[0]                 # stop at the next tier, then carry on there
                 self.plan_info["place"] = place_name
             s = base.model_copy(update={**update, "max_minutes": left})
