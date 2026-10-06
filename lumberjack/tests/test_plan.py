@@ -836,6 +836,6 @@ def test_skills_table_for_the_panel(monkeypatch):
     att = t["skills"][0]
     assert att["next"] == xp_for_level(11) - att["xp"] and 0 < att["pct"] < 100 and att["gained"] == 0
     assert t["skills"][1]["pct"] == 100 and t["skills"][1]["next"] is None
-    assert t["total"] == 109                                         # construction isn't trained here
+    assert t["total"] == 110
     raw["attack"]["xp"] += 50
     assert server.skills_table(raw)["skills"][0]["gained"] == 50

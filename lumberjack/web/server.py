@@ -169,14 +169,14 @@ RESUME_WAIT_S = 1800                  # after a panel restart, wait this long fo
 TRAINED_SKILLS = ["attack", "strength", "defence", "hitpoints", "ranged", "prayer", "magic", "cooking",
                   "woodcutting", "fletching", "fishing", "firemaking", "crafting", "smithing", "mining", "herblore",
                   "runecrafting", "agility", "hunter", "slayer", "farming",
-                  "thieving"]
+                  "thieving", "construction", "summoning"]
 TASK_LEVEL_SKILLS = {"woodcutting": ["woodcutting"], "firemaking": ["firemaking"], "fishing": ["fishing"],
                      "mining": ["mining"], "combat": ["attack", "strength", "defence"], "cooking": ["cooking"],
                      "prayer": ["prayer"], "fletching": ["fletching"], "crafting": ["crafting"],
                      "herblore": ["herblore"], "runecrafting": ["runecrafting"], "agility": ["agility"],
                      "hunter": ["hunter"], "slayer": ["slayer"],
                      "farming": ["farming"], "thieving": ["thieving"], "smithing": ["smithing"], "ranged": ["ranged"],
-                     "magic": ["magic"]}
+                     "magic": ["magic"], "construction": ["construction"], "summoning": ["summoning"]}
 # tasks that spawn their own supplies: need game data + 'Spawn missing tools'
 SPAWN_TASKS = {"cooking": "raw fish", "prayer": "bones", "fletching": "logs and a knife",
                "crafting": "uncut gems and a chisel", "smithing": "bars and a hammer", "magic": "runes",
@@ -186,7 +186,7 @@ DEATH_LIMIT = 3                       # deaths in one step before moving on (how
 CHECK_MINUTES = 2                     # skill check: each task this long
 CHECK_TASKS = ["woodcutting", "fishing", "mining", "combat", "ranged", "magic", "thieving", "slayer",
                "agility", "hunter", "firemaking", "cooking", "prayer", "fletching", "crafting", "smithing",
-               "herblore", "runecrafting", "farming"]
+               "herblore", "runecrafting", "farming", "construction", "summoning"]
 STALL_LIMIT_S = 360                   # a step with no progress/XP this long is restarted
 RESET_AFTER_S = 600                   # a run that lasted this long counts as having gone well
 TIDY_SPARE = 4                        # this many items the next task doesn't use -> worth a bank trip
@@ -450,6 +450,19 @@ def preflight(s: "Settings"):
         fixes.append("Teleports to the Falador farm: rakes, adds supercompost, plants the best seeds for your level "
                      "in both allotments (and the herb patch from 9), grows them with ::grow, cures or clears sick "
                      "crops, harvests, drops the harvest; back where you were at the end.")
+    elif s.task == "construction":
+        if not _names_from_game():
+            errors.append("Construction needs the game's own data.")
+        fixes.append("Teleports to the Rimmington house portal (buys a house from the Varrock estate agent "
+                     "first if you have none), enters in building mode and builds the best plants and trees "
+                     "for your level in the garden, then removes them and builds again.")
+    elif s.task == "summoning":
+        if not (_names_from_game() and s.spawn_tools):
+            errors.append("Summoning needs the game's own data and 'Spawn missing tools' (it spawns the "
+                          "charms, shards, pouches and secondaries).")
+        fixes.append("Teleports to the obelisk under Pikkupstix's house in Taverley, spawns a backpack of "
+                     "ingredients for the best pouch for your level and infuses them all at once, then "
+                     "drops the pouches and goes again.")
     elif s.task == "hunter":
         if not (_names_from_game() and s.spawn_tools):
             errors.append("Hunter needs the game's own data and 'Spawn missing tools' (it spawns its traps).")
@@ -672,6 +685,11 @@ def task_problem(s: Settings):
     if s.task == "farming":
         return None if s.spawn_tools and _names_from_game() else \
             "Farming needs the game's own data and 'Spawn missing tools'"
+    if s.task == "construction":
+        return None if _names_from_game() else "Construction needs the game's own data"
+    if s.task == "summoning":
+        return None if s.spawn_tools and _names_from_game() else \
+            "Summoning needs the game's own data and 'Spawn missing tools'"
     if s.task == "hunter":
         return None if s.spawn_tools and _names_from_game() else \
             "Hunter needs the game's own data and 'Spawn missing tools' (it spawns its traps)"
@@ -711,7 +729,8 @@ TASK_SKILLS = {
     "crafting": ["crafting"], "thieving": ["thieving", "hitpoints"], "smithing": ["smithing"],
     "herblore": ["herblore"], "runecrafting": ["runecrafting"], "agility": ["agility"], "hunter": ["hunter"],
     "slayer": ["slayer", "attack", "strength", "defence", "hitpoints"], "farming": ["farming"],
-    "ranged": ["ranged", "hitpoints"], "magic": ["magic"],
+    "ranged": ["ranged", "hitpoints"], "magic": ["magic"], "construction": ["construction"],
+    "summoning": ["summoning"],
 }
 
 
@@ -862,6 +881,12 @@ class BotController:
         if s.task == "hunter":
             from lumberjack.skills.hunter_task import Hunter
             return Hunter(**common)
+        if s.task == "construction":
+            from lumberjack.skills.house_tasks import Constructor
+            return Constructor(**common)
+        if s.task == "summoning":
+            from lumberjack.skills.house_tasks import Summoner
+            return Summoner(**common)
         if s.task == "agility":
             from lumberjack.skills.agility_task import Agility
             return Agility(**common)
@@ -1899,8 +1924,7 @@ def skills_table(raw):
         pct = 100 if hi is None else max(0, min(100, round(100 * (xp - lo) / max(1, hi - lo))))
         rows.append({"name": name, "level": lv, "boosted": s.get("boosted", lv), "xp": xp,
                      "gained": xp - _skills_first[name], "next": None if hi is None else hi - xp, "pct": pct})
-    trained = [r for r in rows if r["name"] not in ("construction", "summoning")]
-    return {"skills": rows, "total": sum(r["level"] for r in trained), "total_xp": sum(r["xp"] for r in rows),
+    return {"skills": rows, "total": sum(r["level"] for r in rows), "total_xp": sum(r["xp"] for r in rows),
             "gained": sum(r["gained"] for r in rows)}
 
 
