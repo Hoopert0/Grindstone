@@ -11,6 +11,7 @@ Spells are found in the spellbook by name through the game's interfaces (ui.widg
 rebuilt add-on); targets are clicked when the menu's top entry reads "Cast ...".
 """
 import random
+import time
 
 
 from lumberjack import actions, items
@@ -34,6 +35,10 @@ ALCH_ITEM = "iron_arrow"       # stackable and alchable: one stack lasts a thous
 TARGETS = ["chicken"]
 CAST_S = {"alch": 3.0, "tele": 4.2, "npc": 2.6}
 EAT_BELOW = 0.5
+MISS = "miss"            # strike(): the spell was picked but no target stayed under the cursor
+MISS_LIMIT = 30
+FAIL_LIMIT = 8
+XP_GRACE_S = 3.0
 
 
 def best_spell(level):
@@ -66,6 +71,7 @@ class Mage(BotBase):
         self.targets = [t.lower() for t in (targets or TARGETS)]
         self.casts = 0
         self.fails = 0
+        self.misses = 0
 
     def progress(self):
         return self.casts
@@ -91,10 +97,16 @@ class Mage(BotBase):
                 ok = self.cast(spell, kind)
                 if ok is None:                         # nothing to cast on right now
                     continue
+                if ok == MISS:                         # the target walked off the cursor: no failed cast
+                    self.misses += 1
+                    if self.misses >= MISS_LIMIT:
+                        raise StopBot(f"couldn't get the cursor on a target {MISS_LIMIT} times in a row")
+                    continue
+                self.misses = 0
                 self.fails = 0 if ok else self.fails + 1
-                if self.fails >= 8:
-                    raise StopBot(f"couldn't cast {spell} 8 times in a row (no spellbook data? restart the "
-                                  "game so the add-on is rebuilt)")
+                if self.fails >= FAIL_LIMIT:
+                    raise StopBot(f"couldn't cast {spell} {FAIL_LIMIT} times in a row (no spellbook data? restart "
+                                  "the game so the add-on is rebuilt)")
         except StopBot as e:
             self.stop_reason = str(e)
             self.log.info("Stopped: %s. %s", e, self.stats())
@@ -145,15 +157,20 @@ class Mage(BotBase):
                 return False
         else:
             hit = self.strike(spell)
-            if hit is None:
-                return None
+            if hit is None or hit == MISS:
+                return hit
             if not hit:
                 return False
         self.sleep(CAST_S[kind] + random.uniform(0, 0.4))
-        if self._xp() > xp0:
-            self.casts += 1
-            return True
-        return False
+        # a strike walks into range first: give the xp a few more seconds to land
+        end = time.monotonic() + (XP_GRACE_S if kind == "npc" else 0)
+        while True:
+            if self._xp() > xp0:
+                self.casts += 1
+                return True
+            if time.monotonic() >= end:
+                return False
+            self.sleep(0.5)
 
     def alch(self, spell):
         from lumberjack.core import backpack
@@ -186,17 +203,18 @@ class Mage(BotBase):
             return None                                  # waiting, not a failed cast
         if not self.select_spell(spell):
             return False
-        for px, py in interact.points_for(npcs[0]):
-            if not interact.on_screen(px, py):
-                continue
-            self.inp.move(px + random.randint(-2, 2), py + random.randint(-2, 2))
-            self.sleep(random.uniform(0.1, 0.16))
-            top = top_entry(self.gs.menu())
-            if top and top["verb"] == "Cast" and npcs[0]["name"].lower() in top["subject"].lower():
-                self.inp.click()
-                return True
+        for n in npcs[:3]:                               # chickens wander: the next one if this moved
+            for px, py in interact.points_for(n):
+                if not interact.on_screen(px, py):
+                    continue
+                self.inp.move(px + random.randint(-2, 2), py + random.randint(-2, 2))
+                self.sleep(random.uniform(0.1, 0.16))
+                top = top_entry(self.gs.menu())
+                if top and top["verb"] == "Cast" and n["name"].lower() in top["subject"].lower():
+                    self.inp.click()
+                    return True
         actions.cancel_selection(self.ctx, force=True)
-        return False
+        return MISS
 
     def ensure_hp(self):
         s = self.gs.skills()["hitpoints"]

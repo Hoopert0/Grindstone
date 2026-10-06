@@ -13,12 +13,14 @@ SupplyTask is the loop they share (Firemaking and Cooking do the same in their o
 All of them need the game's own data (items by name) and 'Spawn missing tools'.
 """
 import logging
+import random
 import time
 
 from lumberjack import actions, items
 from lumberjack.skills.base import BotBase, StopBot
 
 MAX_STALLS = 4             # process rounds in a row that used nothing -> try a lower supply
+MAX_UNBLOCKS = 3           # nothing lower left: give the blocked supplies another go (a hiccup, not a wall)
 
 
 class SupplyTask(BotBase):
@@ -34,6 +36,7 @@ class SupplyTask(BotBase):
         self.home = None
         self.current = None
         self.blocked = set()
+        self.unblocks = 0
 
     def progress(self):
         return self.done
@@ -150,6 +153,12 @@ class SupplyTask(BotBase):
         self.walk_home()
         lv = (gamestate.skill(self.skill) or {}).get("base", 1)
         self.current = self.best_supply(lv)
+        if self.current is None and self.blocked and self.done and self.unblocks < MAX_UNBLOCKS:
+            # it worked earlier this run: a dialog or a missed click stalled it, not the level
+            self.unblocks += 1
+            self.log.info("Giving %s another go (it worked earlier)", ", ".join(sorted(self.blocked)).replace("_", " "))
+            self.blocked.clear()
+            self.current = self.best_supply(lv)
         if self.current is None:
             raise StopBot(f"nothing left to train {self.skill} on at level {lv}")
         self.state = f"spawning {self.current.replace('_', ' ')}"
@@ -310,7 +319,12 @@ class Smither(SupplyTask):
             if widgets.make(self.ctx, self.gs, product=self.PRODUCT, amounts=("All", "10", "5")) \
                     or self.click_smith_all():
                 self.inp.move(260, 300)
-                return self.wait_used({kind}, still_s=6.0, start=before)
+                used = self.wait_used({kind}, still_s=6.0, start=before)
+                if used == 1 and before > 2 and not self.smith_by_menu:
+                    # one bar per click: the left-click on that button is "Make 1" in this client
+                    self.log.info("One bar per click - picking the amount from the right-click menu from now on")
+                    self.smith_by_menu = True
+                return used
         self.log.warning("The smithing screen never offered '%s' - %s", self.PRODUCT,
                          "it didn't open" if not self.smith_screen() else "its buttons didn't match")
         return 0
@@ -322,16 +336,50 @@ class Smither(SupplyTask):
         from lumberjack.ui import widgets
         return [w for w in widgets.find(self.gs, str(self.SMITH_IF)) if w.get("if") == self.SMITH_IF]
 
+    smith_by_menu = False       # left-clicks made one bar each: right-click and pick the amount
+
     def click_smith_all(self):
         """The smithing screen is up but its buttons carry no 'Make ...' text: click the
-        dagger's All button by its component number."""
+        dagger's All button by its component number (or pick "All" from its right-click menu)."""
         from lumberjack.ui import widgets
         btn = next((w for w in self.smith_screen() if w.get("idx") == self.SMITH_ALL_BUTTON and w["w"] > 0), None)
         if btn is None:
             return False
         x, y = widgets.center(btn)
+        if self.smith_by_menu and self.pick_amount_from_menu(x, y):
+            return True
         self.log.info("Smithing screen: clicking the dagger's All button")
         self.inp.click(x, y)
+        return True
+
+    def pick_amount_from_menu(self, x, y):
+        """Right-click the button and pick the biggest amount on offer ("... All", else X/10/5)."""
+        from lumberjack.core.gamestate import GameStateError, menu_row_point
+        self.inp.right_click(x, y)
+        self.sleep(0.3)
+        try:
+            m = self.gs.menu()
+        except GameStateError:
+            return False
+        entries = [e for e in m.get("entries") or [] if e["verb"] not in ("Cancel", "Examine", "Walk here")]
+        if not m.get("open") or not entries:
+            self.inp.move(x, max(10, y - 120))
+            return False
+        if not getattr(self, "_menu_logged", False):
+            self.log.info("Smithing menu: %s", ", ".join(e["verb"] for e in entries))
+            self._menu_logged = True
+
+        def rank(e):
+            v = e["verb"].lower()
+            return (4 if "all" in v else 3 if v.endswith(" x") or v == "x" else
+                    2 if "10" in v else 1 if "5" in v else 0)
+        e = max(entries, key=rank)
+        rx, ry = menu_row_point(m, e["row"])
+        self.log.info("Smithing screen: %s", e["verb"])
+        self.inp.click(rx + random.randint(-10, 10), ry + random.randint(-1, 1))
+        if rank(e) == 3:                         # "Make X" asks how many
+            self.sleep(1.0)
+            self.inp.type_text("28", enter=True)
         return True
 
 

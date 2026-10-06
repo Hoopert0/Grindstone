@@ -396,12 +396,16 @@ class Fighter(BotBase):
         att = (gamestate.skill("attack") or {}).get("base", 1)
         dfc = (gamestate.skill("defence") or {}).get("base", 1)
         worn = {s["key"] for s in self._worn()}
-        for key in items.melee_gear(att, dfc):
+        gear = items.melee_gear(att, dfc)
+        for key in gear:
             if key in worn or key not in items.BY_KEY:
                 continue
             inv = backpack.slots() or []
             slot = next((i for i, s in enumerate(inv) if s["key"] == key), None)
             if slot is None:
+                if not any(s["id"] < 0 for s in inv):
+                    self.drop_outgrown(gear, loot=True)
+                    inv = backpack.slots() or []
                 if not any(s["id"] < 0 for s in inv):
                     log.info("No room to spawn %s", key.replace("_", " "))
                     continue
@@ -414,7 +418,28 @@ class Fighter(BotBase):
             if actions.use_slot(self.ctx, self.gs, slot, "Wield") or actions.use_slot(self.ctx, self.gs, slot, "Wear"):
                 log.info("Wearing %s", key.replace("_", " "))
                 self.sleep(0.8)
+        self.drop_outgrown(gear)            # what the upgrades took off lands in the backpack
         self.inp.move(260, 300)
+
+    def drop_outgrown(self, gear, loot=False):
+        """Drop scimitars and armour worse than `gear` (an upgrade swaps the old piece into the
+        backpack - a few levels of that filled it). With loot=True also loot, raw and burnt
+        items. Returns how many slots were dropped."""
+        from lumberjack import items
+        from lumberjack.core import backpack
+        inv = backpack.slots() or []
+        metals = tuple(f"{m}_" for m, _ in items.METALS)
+        pieces = ("scimitar",) + items.ARMOUR_PIECES
+
+        def outgrown(k):
+            return bool(k) and k not in gear and k.startswith(metals) and k.split("_", 1)[1] in pieces
+        junk = [i for i, s in enumerate(inv) if s["id"] >= 0 and (outgrown(s["key"]) or (
+            loot and backpack.kind(s["key"]) in ("loot", "raw", "burnt")))]
+        if not junk:
+            return 0
+        log.info("Dropping %d item(s): old gear%s", len(junk), " and loot" if loot else "")
+        actions.drop_known(self.ctx, self.gs, junk)
+        return len(junk)
 
     def _worn(self):
         from lumberjack.core import backpack
@@ -827,7 +852,7 @@ class Fighter(BotBase):
             self.banked += 1
         else:
             log.info("No bank nearby - dropping %d loot item(s)", len(loot))
-            actions.drop_all(self.ctx, keep=keep)
+            actions.drop_known(self.ctx, self.gs, loot)     # known by name: the hover check refused some
         return True
 
     def bury(self):

@@ -133,6 +133,20 @@ def home_teleport(ctx, timeout=30):
     return landed
 
 
+def _hover_spell(ctx, gs, name):
+    """Hover the spellbook component named `name` (the interface read); its top menu entry."""
+    from lumberjack.core.gamestate import top_entry
+    from lumberjack.ui import widgets
+    for w in widgets.find(gs, name):
+        if w["w"] > 0 and w["h"] > 0:
+            ctx.inp.move(*widgets.center(w))
+            ctx.sleep(0.3)
+            top = top_entry(gs.menu())
+            if top and name in (top["subject"] + " " + top["verb"]).lower():
+                return top
+    return None
+
+
 def _home_teleport_gs(ctx, gs, timeout):
     """The spell confirmed by the menu text ('Cast ... Home Teleport'); landed = our tile jumped."""
     from lumberjack.core.gamestate import top_entry
@@ -140,6 +154,8 @@ def _home_teleport_gs(ctx, gs, timeout):
     ctx.inp.move(*HOME_TELEPORT_ICON)
     ctx.sleep(0.3)
     top = top_entry(gs.menu())
+    if not top or "home teleport" not in (top["subject"] + " " + top["verb"]).lower():
+        top = _hover_spell(ctx, gs, "home teleport") or top     # not where we expected: find it by name
     if not top or "home teleport" not in (top["subject"] + " " + top["verb"]).lower():
         log.warning("Couldn't find the Home Teleport spell (menu shows %s)", top and top["verb"] + " " + top["subject"])
         open_tab(ctx, "inventory")

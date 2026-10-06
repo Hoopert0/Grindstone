@@ -509,3 +509,33 @@ def test_magic_picks_the_best_combat_spell_until_alchemy():
     assert best_spell(1)[0] == "Wind Strike" and best_spell(12)[0] == "Earth Strike"
     assert best_spell(17)[0] == "Wind Bolt" and best_spell(21)[0] == "Low Level Alchemy"
     assert best_spell(18)[2] == {"air_rune": 2, "chaos_rune": 1}
+
+
+def test_old_gear_is_dropped_to_make_room_for_upgrades(monkeypatch):
+    """An upgrade swaps the old piece into the backpack: a few levels of that filled it ("No room
+    to spawn steel scimitar"). Outgrown gear (and loot, when full) goes; the rest stays."""
+    from lumberjack import actions, items
+    from lumberjack.core import backpack, gamestate
+    names = (["bronze_scimitar", "iron_scimitar", "iron_platebody", "bronze_full_helm", "cowhide", "raw_beef",
+              "lobster", "bronze_axe", "iron_kiteshield"] + ["lobster"] * 19)
+    inv = [{"id": 1, "key": n} for n in names]
+    monkeypatch.setattr(backpack, "slots", lambda: inv)
+    monkeypatch.setattr(gamestate, "skill", lambda name: {"base": 10 if name == "attack" else 3})
+
+    def drop(ctx, gs, slots):
+        for i in slots:
+            inv[i] = {"id": -1, "key": None}
+    monkeypatch.setattr(actions, "drop_known", drop)
+    spawned = []
+    monkeypatch.setattr(items, "spawn", lambda ctx, key, n=1: spawned.append(key))
+    monkeypatch.setattr(actions, "use_slot", lambda *a: False)
+    f = combat.Fighter.__new__(combat.Fighter)
+    f.gs, f.ctx, f.spawn_tools, f.sleep = object(), None, True, lambda s: None
+    f.inp = types.SimpleNamespace(move=lambda *a: None)
+    f._worn = lambda: [{"key": "iron_full_helm"}, {"key": "iron_platelegs"}]
+    f.equip_melee()                      # wants steel scimitar (attack 10) + iron armour (defence 3)
+    left = [s["key"] for s in inv]
+    assert spawned and spawned[0] == "steel_scimitar"
+    for gone in ("bronze_scimitar", "iron_scimitar", "bronze_full_helm", "cowhide", "raw_beef"):
+        assert gone not in left, gone
+    assert {"iron_platebody", "iron_kiteshield", "bronze_axe", "lobster"} <= set(left)

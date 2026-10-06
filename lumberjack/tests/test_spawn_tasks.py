@@ -63,7 +63,7 @@ def bot(cls, game, **kw):
     b.inp = types.SimpleNamespace(move=lambda *a, **k: None, close=lambda: None)
     b.log = __import__("logging").getLogger("t")
     b.gs, b.state, b.home = game, "", [3200, 3200]
-    b.done, b.blocked, b.current, b.spawn_tools = 0, set(), None, True
+    b.done, b.blocked, b.current, b.spawn_tools, b.unblocks = 0, set(), None, True, 0
     b.sleep = lambda s: None
     b.check_stop = lambda: None
     for k, v in kw.items():
@@ -192,6 +192,61 @@ def test_smither_uses_bar_on_anvil_and_makes_daggers(game, monkeypatch):
         sm.process(game.inv, supply, {"hammer": 0})
 
 
+def test_smither_switches_to_the_menu_when_a_click_makes_one_bar(game, monkeypatch):
+    """The dagger's All button made one bar per left-click in game: from then on its right-click
+    menu's biggest amount is picked."""
+    from lumberjack.core import interact
+    from lumberjack.ui import widgets
+    sm = bot(S.Smither, game)
+    game.put("hammer")
+    game.put("bronze_bar", 10)
+    anvil = {"name": "Anvil", "ops": [], "screen": [300, 200], "body": [300, 190], "tile": [1, 1], "dist": 2}
+    game.locs = lambda radius, name=None: [anvil]
+    monkeypatch.setattr(actions, "use_slot", lambda ctx, gs, i, verb: True)
+    monkeypatch.setattr(interact, "on_screen", lambda x, y, margin=4: True)
+    monkeypatch.setattr(widgets, "make", lambda *a, **k: False)
+    btn = {"if": 300, "idx": 21, "x": 100, "y": 100, "w": 40, "h": 20}
+    monkeypatch.setattr(widgets, "find", lambda gs, match=None: [btn])
+    menu = {"open": False}
+
+    def smith(n):
+        for _ in range(n):
+            i = next(i for i, s in enumerate(game.inv) if s["key"] == "bronze_bar")
+            game.inv[i] = {"id": 1, "key": "bronze_dagger", "name": "Bronze dagger"}
+    picked = []
+
+    def click(*a):
+        if menu["open"]:
+            picked.append(a)
+            menu["open"] = False
+            smith(sum(s["key"] == "bronze_bar" for s in game.inv))      # Make All
+        elif a:
+            smith(1)                                                     # this client: Make 1
+    sm.inp = types.SimpleNamespace(move=lambda *a, **k: None, click=click, close=lambda: None,
+                                   right_click=lambda x, y: menu.__setitem__("open", True))
+    game.menu = lambda: ({"open": True, "x": 80, "y": 90, "w": 120, "h": 80, "entries": [
+        {"verb": "Make 1", "subject": "", "row": 0}, {"verb": "Make 5", "subject": "", "row": 1},
+        {"verb": "Make All", "subject": "", "row": 3}, {"verb": "Cancel", "subject": "", "row": 4}]}
+        if menu["open"] else {"open": False, "entries": [{"verb": "Use", "subject": "Bronze bar -> Anvil"}]})
+    monkeypatch.setattr(S, "time", types.SimpleNamespace(monotonic=iter(range(0, 10 ** 6)).__next__))
+    supply = lambda: [i for i, s in enumerate(game.inv) if s["key"] == "bronze_bar"]   # noqa: E731
+    assert sm.process(game.inv, supply(), {"hammer": 0}) == 1 and sm.smith_by_menu
+    assert sm.process(game.inv, supply(), {"hammer": 0}) == 9 and picked
+
+
+def test_supply_task_gives_a_blocked_supply_another_go(game, monkeypatch):
+    sm = bot(S.Smither, game)
+    sm.blocked.add("bronze_bar")
+    sm.done = 5                                           # it worked earlier this run
+    monkeypatch.setattr(sm, "walk_home", lambda: None)
+    sm.restock(game.inv, {})
+    assert sm.current == "bronze_bar" and not sm.blocked and sm.unblocks == 1
+    sm.blocked.add("bronze_bar")
+    sm.unblocks = S.MAX_UNBLOCKS
+    with pytest.raises(StopBot, match="nothing left"):
+        sm.restock(game.inv, {})
+
+
 def test_best_bow_and_ranged_equip(game, monkeypatch):
     assert items.best_bow(1) == ("shortbow", "iron_arrow") and items.best_bow(45)[0] == "yew_shortbow"
     assert all(k in items.BY_KEY for b in items.BOWS for k in (b[0], b[2]))
@@ -238,6 +293,36 @@ def test_magic_spell_by_level_and_casting(game, monkeypatch):
     assert m.cast("Varrock Teleport", "tele") and m.casts == 1 and "teleport" in m.state
     monkeypatch.setattr(widgets, "find", lambda gs, match=None: [])
     assert not m.cast("Varrock Teleport", "tele")
+
+
+def test_magic_target_walking_off_the_cursor_is_a_miss_not_a_failed_cast(game, monkeypatch):
+    """Chickens wander: a spell picked with no chicken left under the cursor isn't one of the 8
+    failed casts that stopped the run ("couldn't cast Earth Strike 8 times in a row")."""
+    from lumberjack.core import interact
+    from lumberjack.skills import magic_task as M
+    m = bot(M.Mage, game, casts=0, fails=0, misses=0, targets=["chicken"])
+    m.inp = types.SimpleNamespace(click=lambda *a: None, move=lambda *a, **k: None, close=lambda: None)
+    chicken = {"name": "Chicken", "ops": ["Attack"], "dist": 2, "screen": [300, 200], "body": [300, 195],
+               "tile": [3201, 3201]}
+    game.npcs_ = [chicken, dict(chicken, tile=[3203, 3203], screen=[340, 220], body=[340, 215])]
+    monkeypatch.setattr(interact, "on_screen", lambda x, y, margin=4: True)
+    monkeypatch.setattr(M, "pick_targets", lambda npcs, me: npcs)
+    monkeypatch.setattr(m, "select_spell", lambda spell: True)
+    monkeypatch.setattr(actions, "cancel_selection", lambda ctx, force=False: True)
+    game.menu = lambda: {"open": False, "entries": [{"verb": "Walk here", "subject": ""}]}
+    assert m.cast("Earth Strike", "npc") == M.MISS and m.fails == 0
+    hovered = []
+
+    def menu():
+        hovered.append(1)
+        return {"open": False, "entries": [{"verb": "Cast", "subject": "Earth Strike -> Chicken"}]
+                if len(hovered) > 6 else [{"verb": "Walk here", "subject": ""}]}
+    game.menu = menu                                      # the first chicken moved, the second didn't
+
+    def click(*a):
+        game.skills_["magic"]["xp"] += 9
+    m.inp.click = click
+    assert m.cast("Earth Strike", "npc") is True and m.casts == 1
 
 
 def test_magic_route_places():

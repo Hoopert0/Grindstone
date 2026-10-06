@@ -76,20 +76,41 @@ def _wait_arrival(ctx, gs, tile, timeout):
     end = time.monotonic() + timeout
     while time.monotonic() < end:
         ctx.sleep(0.5)
-        if tiles_apart(gs.player()["tile"], tile) <= ARRIVE:
-            return True
+        try:
+            if tiles_apart(gs.player()["tile"], tile) <= ARRIVE:
+                return True
+        except Exception as e:                  # the new area still loading: look again
+            log.debug("arrival check: %s", e)
     return False
+
+
+def _clear_dialogs(ctx, gs):
+    try:
+        from lumberjack.ui import widgets
+        for _ in range(4):
+            if not widgets.continue_dialog(ctx, gs):
+                break
+            ctx.sleep(0.6)
+    except Exception as e:
+        log.debug("clearing dialogs: %s", e)
 
 
 def teleport(ctx, gs, tile, plane=0):
     """Admin teleport (::tele). True once the game data shows us there - with the standard
     camera, so what we came for is on screen (an off-screen altar cost Runecrafting its clicks)."""
     global teleported_at
-    ctx.inp.move(260, 300)
-    teleported_at = time.monotonic()
-    ctx.inp.type_text(f"::tele {tile[0]} {tile[1]} {plane}", enter=True)
-    arrived = _wait_arrival(ctx, gs, tile, TELE_WAIT_S)
-    teleported_at = time.monotonic()
+    arrived = False
+    for attempt in range(2):
+        if attempt:                            # an open dialog swallows the typing: clear it, once more
+            log.info("::tele didn't take - clearing any dialog and trying again")
+            _clear_dialogs(ctx, gs)
+        ctx.inp.move(260, 300)
+        teleported_at = time.monotonic()
+        ctx.inp.type_text(f"::tele {tile[0]} {tile[1]} {plane}", enter=True)
+        arrived = _wait_arrival(ctx, gs, tile, TELE_WAIT_S)
+        teleported_at = time.monotonic()
+        if arrived:
+            break
     if not arrived:
         return False
     try:
