@@ -275,9 +275,7 @@ class Crafter(SupplyTask):
     def process(self, inv, supply_slots, tools):
         kind = inv[supply_slots[0]]["key"]
         before = self.count({kind})
-        if not (actions.use_slot(self.ctx, self.gs, tools["chisel"], "Use")
-                and actions.use_slot(self.ctx, self.gs, supply_slots[0], "Use")):
-            actions.cancel_selection(self.ctx, force=True)
+        if not actions.use_on_slot(self.ctx, self.gs, tools["chisel"], supply_slots[0]):
             return 0
         if not make_all(self.ctx, self.gs):
             return self.wait_used({kind}, still_s=2.0, start=before)   # a single gem cuts straight away
@@ -483,9 +481,7 @@ class Herbalist(SupplyTask):
         _, unf, sec = RECIPES[self.current]
         u, s = self._slots(inv, unf), self._slots(inv, sec)
         before = len(u)
-        if not (actions.use_slot(self.ctx, self.gs, s[0], "Use")
-                and actions.use_slot(self.ctx, self.gs, u[0], "Use")):
-            actions.cancel_selection(self.ctx, force=True)
+        if not actions.use_on_slot(self.ctx, self.gs, s[0], u[0]):
             return 0
         count = lambda: len(self._slots(backpack_slots(), unf))
         if not make_all(self.ctx, self.gs):          # one of either: made straight away

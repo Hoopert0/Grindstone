@@ -450,6 +450,27 @@ def use_slot(ctx, gs, i, verb):
     return False
 
 
+def use_on_slot(ctx, gs, item_slot, target_slot):
+    """Use backpack item `item_slot` on `target_slot` (chisel on a gem, knife on logs): select it,
+    wait until the game shows "Use <item> -> ..." on the target, click. True if clicked. (Hovering
+    the target before the selection registers clicks "Use <target>" - selecting the target.)"""
+    from lumberjack.core.gamestate import top_entry
+    dismiss_dialog(ctx)
+    if not use_slot(ctx, gs, item_slot, "Use"):
+        return False
+    x, y = R.INV_SLOTS[target_slot].center
+    for _ in range(6):
+        ctx.sleep(0.12)
+        ctx.inp.move(x + random.randint(-4, 4), y + random.randint(-4, 4), steps=2)
+        ctx.sleep(0.08)
+        top = top_entry(gs.menu())
+        if top and top["verb"] == "Use" and "->" in (top.get("subject") or ""):
+            ctx.inp.click()
+            return True
+    cancel_selection(ctx, force=True)
+    return False
+
+
 def drop_known(ctx, gs, slots):
     """Drop exactly these slots by the menu's "Drop" row (game data) - for items the caller knows
     by name (cut gems, spawned bones...), which the generic product check would keep."""

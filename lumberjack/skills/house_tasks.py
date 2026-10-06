@@ -235,16 +235,17 @@ class Constructor(BotBase):
             interact.walk_to_tile(self.ctx, self.gs, loc["tile"], arrive=1, max_clicks=3)
             return True                          # (moved: counts as doing something)
         if not self.choose_in_box(index, name):
-            self.log.info("The furniture box didn't offer %s", name)
-            actions.cancel_selection(self.ctx, force=True)
+            self.close_box()
             return False
         if self.wait_xp(6.0):
             self.built += 1
         return True
 
     def choose_in_box(self, index, name):
-        """In the furniture box: click `name` (decoration `index`). True if clicked."""
-        from lumberjack.core.gamestate import top_entry
+        """In the furniture box: click `name` (decoration `index`). True if clicked. The box lists
+        each piece as an icon with its name beside it; the icon (the item grid, component 132)
+        is what builds - found by hovering the row until the game offers "Build"."""
+        from lumberjack.core.gamestate import menu_row_point, top_entry
         from lumberjack.ui import widgets
         end = time.monotonic() + 4
         box = []
@@ -253,26 +254,52 @@ class Constructor(BotBase):
             box = [w for w in widgets.find(self.gs, str(BUILD_BOX)) if w.get("if") == BUILD_BOX and w["w"] > 0]
         if not box:
             return False
+        if not getattr(self, "_box_logged", False):
+            self._box_logged = True
+            self.log.info("Furniture box: %s", "; ".join(
+                f"{w.get('idx')}:{(w.get('text') or '').strip()[:20]!r}{w.get('ops') or ''}@{w['x']},{w['y']} "
+                f"{w['w']}x{w['h']}" for w in box[:30]))
         label = next((w for w in box if (w.get("text") or "").strip().lower() == name.lower()), None)
         grid = next((w for w in box if w.get("idx") == 132), None)
         pts = []
-        if grid is not None:                     # the item grid: 2 columns, 4 rows
+        if label is not None:                    # the icon sits left of the name, the row below it
+            for dy in (14, 4, 24, 34, -4):
+                for dx in (-45, -60, -30, -15, 10, 30):
+                    pts.append((label["x"] + dx, label["y"] + dy))
+        if grid is not None:                     # the grid's own cells (2 columns, 4 rows)
             slot = SLOT_OF[index]
-            cw, ch = grid["w"] / 2, grid["h"] / 4
-            pts.append((int(grid["x"] + cw * (slot % 2 + 0.5)), int(grid["y"] + ch * (slot // 2 + 0.5))))
-        if label is not None:
-            lx, ly = widgets.center(label)
-            pts += [(label["x"] - dx, ly) for dx in (20, 40, 60)] + [(lx, ly)]
+            for cols, rows in ((2, 4), (1, 7)):
+                col, row = (slot % 2, slot // 2) if cols == 2 else (0, index)
+                cw, ch = grid["w"] / cols, grid["h"] / rows
+                pts.append((int(grid["x"] + cw * (col + 0.5)), int(grid["y"] + ch * (row + 0.5))))
+        build = lambda e: bool(e) and e["verb"].lower().startswith("build")    # noqa: E731
         for x, y in pts:
             self.inp.move(x, y)
-            self.sleep(0.15)
-            top = top_entry(self.gs.menu())
-            if top and ("build" in top["verb"].lower() or name.lower() in (top.get("subject") or "").lower()):
+            self.sleep(0.12)
+            menu = self.gs.menu()
+            if build(top_entry(menu)):
                 self.inp.click()
                 return True
-        if pts:                                  # nothing named it on hover: the grid cell / label anyway
-            self.inp.click(*pts[0])
-            return True
+            if any(build(e) for e in menu.get("entries") or []):
+                self.inp.right_click(x, y)
+                self.sleep(0.3)
+                menu = self.gs.menu()
+                e = next((e for e in menu.get("entries") or [] if build(e)), None)
+                if menu.get("open") and e:
+                    rx, ry = menu_row_point(menu, e["row"])
+                    self.inp.click(rx, ry)
+                    return True
+        self.log.info("Nothing in the furniture box offered Build for %s", name)
+        return False
+
+    def close_box(self):
+        """Close the furniture box (its X)."""
+        from lumberjack.ui import widgets
+        for w in widgets.find(self.gs, str(BUILD_BOX)):
+            if w.get("if") == BUILD_BOX and w["w"] > 0 and any(o.lower() == "close" for o in w.get("ops") or []):
+                self.inp.click(*widgets.center(w))
+                self.sleep(0.4)
+                return True
         return False
 
     def remove(self, loc):

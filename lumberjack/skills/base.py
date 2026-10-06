@@ -87,6 +87,7 @@ class BotBase:
                     self.log.warning("The game window is minimized - waiting until it's back")
                     warned = True
                 before, self.state = self.state, "game minimized"
+                self._watch_marker = None    # minimized isn't stalled: the "no progress" clock waits
                 time.sleep(1.0)
                 self.check_stop()
                 self.state = before

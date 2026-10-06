@@ -378,10 +378,10 @@ def test_herblore_unlocks_spawns_and_mixes(game, monkeypatch):
     assert supply
     used = []
 
-    def use(ctx, gs, i, verb):
-        used.append(game.inv[i]["key"])
+    def use(ctx, gs, a, b):                        # the secondary on the unfinished potion
+        used.extend([game.inv[a]["key"], game.inv[b]["key"]])
         return True
-    monkeypatch.setattr(actions, "use_slot", use)
+    monkeypatch.setattr(actions, "use_on_slot", use)
 
     def mix(ctx, gs):                              # Make All: every pair becomes a potion
         for i, s in enumerate(game.inv):

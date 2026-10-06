@@ -1266,6 +1266,7 @@ class BotController:
                     self._sleep(10)
                     continue
                 try:
+                    self._wait_unminimized(ctx, log)
                     self._recover(ctx)
                     # tidy first: a bank trip walks away, and the task starts where we stand
                     self._doing("tidying the backpack")
@@ -1412,6 +1413,31 @@ class BotController:
         log.info("The game is back")
         self._doing(None)
         self._wait_ready(log)
+
+    def _wait_unminimized(self, ctx, log):
+        """A minimized game can't be looked at (and recovery needs to): wait for it to come back
+        instead of ending the plan."""
+        try:
+            from lumberjack.core.window import GameMinimized
+        except ImportError:                        # (a stand-in window module: nothing to wait for)
+            return
+        said = False
+        while not self.stop_event.is_set():
+            try:
+                ctx.grab()
+            except GameMinimized:
+                if not said:
+                    log.warning("The game window is minimized - waiting until it's restored")
+                    said = True
+                self._doing("waiting for the game window to be restored")
+                self._sleep(3)
+                continue
+            except Exception:                      # anything else is recovery's business
+                return
+            if said:
+                log.info("The game window is back - carrying on")
+                self._doing(None)
+            return
 
     def _wait_ready(self, log):
         """Until the game answers and we're logged in (the login screen and the welcome screen
