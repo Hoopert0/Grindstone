@@ -110,6 +110,7 @@ class Woodcutter:
         self.bad_spots = []  # (x, y, expiry) screen spots whose hover text wasn't a tree
         self.last_tree = None  # the loc we clicked last (game data)
         self.dry_since = None  # since when no tree here was standing (respawn wait)
+        self.seen = None       # what the last game-data look found
         self.taken = 0         # trees felled by someone else before we got a log
 
     # ---- helpers ---------------------------------------------------------------------
@@ -225,10 +226,13 @@ class Woodcutter:
                     self.state = "waiting"
                     self.sleep(30)
                     continue
+                self.seen = None
                 kind = self.find_and_click_tree()
-                if not kind and self.gs:
-                    self.wait_for_respawn()      # the scene data sees every tree: no camera sweeps
-                    continue
+                if not kind and self.gs and self.seen is not None:
+                    if not self.seen["trees"]:   # none standing: felled - they grow back
+                        self.wait_for_respawn()
+                        continue
+                    log.info("Couldn't click any of the %d tree(s) - turning the camera", self.seen["trees"])
                 self.dry_since = None
                 if not kind:
                     self.empty_scans += 1
@@ -316,6 +320,8 @@ class Woodcutter:
         from lumberjack.core import interact
         trees_ = self.wanted_trees_gs()
         visible = [(k, l) for k, l in trees_ if interact.on_screen(*l["screen"]) or interact.on_screen(*l["body"])]
+        if not walked:
+            self.seen = {"trees": len(trees_), "visible": len(visible)}
         for kind, loc in visible[:4]:
             if interact.use_option(self.ctx, self.gs, interact.points_for(loc), "Chop down", loc["name"]):
                 log.info("Chopping a %s %d tile(s) away", loc["name"].lower(), loc["dist"])

@@ -189,6 +189,7 @@ class Miner(BotBase):
         self.rock_fails = {}             # loc id -> clicks that gave nothing (this run)
         self.last_rock = None            # the loc we clicked last
         self.dry_since = None            # since when no rock here was free (respawn wait)
+        self.seen = None                 # what the last game-data look found (rocks, ranked, ...)
         self.taken = 0                   # rocks someone else emptied before or while we mined
 
     def stats(self):
@@ -232,10 +233,16 @@ class Miner(BotBase):
                     self.state = "waiting"
                     self.sleep(30)
                     continue
+                self.seen = None
                 hit = self.find_and_click_rock()
-                if not hit and self.gs:
-                    self.wait_for_respawn()          # the scene data sees every rock: no camera sweeps
-                    continue
+                if not hit and self.gs and self.seen:
+                    if self.mined_out():                 # wanted rocks are all empty: they grow back
+                        self.wait_for_respawn()
+                        continue
+                    if not self.seen["ranked"]:          # none of ours here at all
+                        raise StopBot(f"no {'/'.join(self.active_ores())} rocks here (rocks seen: "
+                                      f"{', '.join(f'{i}={o}' for i, o in self.seen['ids']) or 'none'})")
+                    self.log.info("Couldn't click any of the %d rock(s) - turning the camera", self.seen["ranked"])
                 self.dry_since = None
                 if not hit:
                     self.empty_scans += 1
@@ -312,9 +319,14 @@ class Miner(BotBase):
     def find_and_click_rock_gs(self, walked=False):
         from lumberjack.core import interact
         empty = {i for i, n in self.rock_fails.items() if n >= EMPTY_AFTER_FAILS}
-        ranked = rank_rocks_gs(self.gs.locs(GS_RADIUS), self.rock_ores, self.active_ores(),
+        locs = self.gs.locs(GS_RADIUS)
+        ranked = rank_rocks_gs(locs, self.rock_ores, self.active_ores(),
                                self._guess_ore(self.grab()), self.allow_unknown, empty)
         visible = [r for r in ranked if interact.on_screen(*r[2]["screen"])]
+        rocks = [l for l in locs if "Mine" in (l.get("ops") or [])]
+        self.seen = {"rocks": len(rocks), "ranked": len(ranked), "visible": len(visible),
+                     "depleted": sum(1 for l in rocks if self.rock_ores.get(l["id"]) == "empty"),
+                     "ids": sorted({(l["id"], self.rock_ores.get(l["id"], "?")) for l in rocks})[:12]}
         for ore, known, loc in visible[:4]:
             pt = interact.use_option(self.ctx, self.gs, interact.points_for(loc), "Mine", loc["name"])
             if pt:
@@ -383,6 +395,10 @@ class Miner(BotBase):
             return False
         here = [l for l in self.gs.locs(GS_RADIUS) if l["tile"] == loc["tile"]]
         return bool(here) and all(l["id"] != loc["id"] for l in here)
+
+    def mined_out(self):
+        """Nothing to mine, but empty rocks around: the ores are taken and will grow back."""
+        return bool(self.seen) and not self.seen["ranked"] and self.seen["depleted"] > 0
 
     def wait_for_respawn(self):
         """No rock we want is free within reach (other players, or we emptied them): wait for

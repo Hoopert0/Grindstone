@@ -266,3 +266,23 @@ def test_mined_out_waits_for_respawn_then_stops(monkeypatch):
     import pytest
     with pytest.raises(mining.StopBot, match="free here"):
         m.wait_for_respawn()
+
+
+def test_rocks_that_cant_be_clicked_are_not_mined_out(monkeypatch):
+    """v109 treated "clicks didn't take" like "everything is mined" and waited for respawns that
+    never came. Only rocks known to be empty mean that."""
+    from lumberjack.core import interact
+
+    class GS:
+        def locs(self, radius=15, name=None):
+            return [rock(2090, 2), rock(2091, 3)]
+    m, clock = _miner(monkeypatch, GS())
+    m.allow_unknown, m.ctx = True, None
+    m._guess_ore = lambda frame: (lambda loc: None)
+    monkeypatch.setattr(interact, "on_screen", lambda x, y, margin=4: True)
+    monkeypatch.setattr(interact, "use_option", lambda *a, **k: None)          # hover never takes
+    assert m.find_and_click_rock_gs(walked=True) is None
+    assert m.seen["ranked"] == 2 and not m.mined_out()
+    m.rock_ores = {2090: "empty", 2091: "empty"}                                 # now they're all mined
+    assert m.find_and_click_rock_gs(walked=True) is None
+    assert m.mined_out()
