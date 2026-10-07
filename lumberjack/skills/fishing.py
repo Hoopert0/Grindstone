@@ -74,6 +74,7 @@ FRAME_GAP_S = 0.3                # ripples animate: look at two frames this far 
 FISH_TIMEOUT_S = 600             # hard cap on one click
 NO_CATCH_S = 75                  # busy (or "busy") this long without a catch -> re-click
 NEVER_STARTED_S = 6              # no movement this long after clicking -> missed
+DUD_SPOT_S = 45                  # a spot a click caught nothing at is passed over this long
 MAX_FAILED_CLICKS = 6            # clicks in a row that caught nothing -> stop
 SCANS_BEFORE_MOVING = 4
 EMPTY_ROUNDS_BEFORE_GIVING_UP = 12
@@ -538,6 +539,10 @@ class Fisher(BotBase):
             if self.auto and "fishing" in self.levels and self.choose_method(self.levels["fishing"]):
                 self.ensure_tools()
             return False
+        now = time.monotonic()
+        dud = getattr(self, "dud_spots", {})
+        fresh = [sp for sp in offering if dud.get(sp.get("index"), 0) <= now]
+        offering = fresh or offering            # every spot gave nothing lately: try them anyway
         visible = [sp for sp in offering if self._on_screen(*sp["screen"])]
         if not visible:
             near = min(offering, key=lambda sp: sp["dist"])
@@ -565,6 +570,7 @@ class Fisher(BotBase):
                 menu = self.gs.menu()
                 top = top_entry(menu)
                 if top and top["verb"] == verb and top["subject"] == SPOT_NAME:
+                    self.last_spot = sp.get("index")
                     self.inp.click()
                     self.log.info("Clicked %s at a spot %d tile(s) away", verb, sp["dist"])
                     return True
@@ -578,6 +584,7 @@ class Fisher(BotBase):
                     e = find_entry(menu, verb, SPOT_NAME)
                     if menu.get("open") and e:
                         rx, ry = menu_row_point(menu, e["row"])
+                        self.last_spot = sp.get("index")
                         self.inp.click(rx + random.randint(-12, 12), ry + random.randint(-1, 1))
                         self.log.info("Chose %s from the menu (row %d)", verb, e["row"] + 1)
                         return True
@@ -805,6 +812,12 @@ class Fisher(BotBase):
             self.failed_clicks = 0
             return
         self.failed_clicks += 1
+        spot = getattr(self, "last_spot", None)
+        if spot is not None:                    # (out of reach / across the water): another one next
+            if not hasattr(self, "dud_spots"):
+                self.dud_spots = {}
+            self.dud_spots[spot] = time.monotonic() + DUD_SPOT_S
+            self.last_spot = None
         if self.failed_clicks >= MAX_FAILED_CLICKS:
             raise StopBot(f"{self.failed_clicks} tries without a catch - right tool ({TOOLS[self.method]})"
                           f" and level ({METHOD_LEVELS[self.method]}+)?")
@@ -814,7 +827,7 @@ class Fisher(BotBase):
         left." / "You need a fly fishing rod to lure these fish." - get the tools again."""
         from lumberjack.ui import widgets
         said = (widgets.last_dialog or "").lower()
-        if "fishing level" in said:
+        if "need a fishing level" in said:          # (not "...advanced a Fishing level!")
             raise StopBot(widgets.last_dialog)
         if ("don't have any" in said or "you need a" in said) and self.spawn_tools:
             self.log.info("The game says the %s are missing - getting them again", TOOLS[self.method])

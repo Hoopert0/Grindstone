@@ -116,6 +116,16 @@ def find(item, inv=None):
     return [i for i, s in enumerate(inv) if s["key"] == item]
 
 
+# what Herblore / Summoning spawn and leave behind: never tools, safe to drop between tasks
+POTION = re.compile(r"(potion|\(unf\)|antipoison|\(\d\)$|^vial)")
+HERB_SECONDARIES = {"eye_of_newt", "limpwurt_root", "red_spiders'_eggs", "white_berries", "snape_grass",
+                    "unicorn_horn_dust", "chocolate_dust", "goat_horn_dust", "toad's_legs", "wine_of_zamorak",
+                    "jangerberries", "potato_cactus", "mort_myre_fungus", "dragon_scale_dust", "spirit_shards",
+                    "gold_charm", "green_charm", "crimson_charm", "blue_charm"}
+HERBS = {"guam_leaf", "marrentill", "tarromin", "harralander", "ranarr_weed", "toadflax", "irit_leaf",
+         "avantoe", "kwuarm", "snapdragon", "cadantine", "lantadyme", "dwarf_weed", "torstol"}
+
+
 def kind(k):
     if not k:
         return None
@@ -131,7 +141,8 @@ def kind(k):
         return "log"
     if k in LOOT or k.startswith("grimy_") or k.endswith("_bones"):
         return "loot"
-    if (k.endswith("_ore") or k in ORES or k.endswith("_(u)") or k in ("arrow_shaft", "arrow_shafts")
+    if (POTION.search(k) or k in HERB_SECONDARIES or k.endswith(("_leaf", "_pouch", "_charm")) or k in HERBS
+            or k.endswith("_ore") or k in ORES or k.endswith("_(u)") or k in ("arrow_shaft", "arrow_shafts")
             or k.startswith("uncut_") or k.endswith("_stock")):
         return "product"
     return None

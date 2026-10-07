@@ -109,3 +109,38 @@ def test_chat_a_bot_handles_itself_never_stops_it():
     for i in range(watch.REPEAT_LIMIT + 3):
         gs.say("You can't light a fire here.")
         watch.check_chat(bot, gs, 1.0 + i, Stop)              # 9 times in 10 s: still running
+
+
+def test_a_fishing_level_up_is_not_a_reason_to_stop(monkeypatch):
+    from lumberjack.skills import fishing as F
+    f = F.Fisher.__new__(F.Fisher)
+    f.method, f.spawn_tools, f.failed_clicks = "lure", True, 0
+    f.log = __import__("logging").getLogger("t")
+    f.ensure_tools = lambda: None
+    monkeypatch.setattr(widgets, "last_dialog", "Congratulations, you've just advanced a Fishing level! "
+                                                "Your Fishing level is now 26.")
+    f.after_dialog()                                         # no StopBot
+
+
+def test_leftover_herblore_and_summoning_items_are_droppable():
+    from lumberjack.core import backpack
+    for k in ("attack_potion(3)", "harralander_potion_(unf)", "chocolate_dust", "guam_leaf",
+              "spirit_wolf_pouch", "red_spiders'_eggs"):
+        assert backpack.is_product(k), k
+    for k in ("tinderbox", "steel_axe", "fly_fishing_rod", "feather", "coins"):
+        assert not backpack.is_product(k), k
+
+
+def test_thieving_doesnt_stop_when_food_is_there_but_eating_missed(monkeypatch):
+    from lumberjack import actions
+    from lumberjack.core import backpack
+    from lumberjack.skills import thieving_task as T
+    t = T.Thief.__new__(T.Thief)
+    t.gs = types.SimpleNamespace(skills=lambda: {"hitpoints": {"boosted": 16, "level": 36}, "thieving": {"xp": 0}})
+    t.eat_below, t.spawn_tools, t.eaten, t.state = 0.5, True, 0, ""
+    t.ctx, t.sleep, t.log = None, lambda s: None, __import__("logging").getLogger("t")
+    monkeypatch.setattr(backpack, "slots", lambda: [{"id": 379, "key": "lobster"}])
+    monkeypatch.setattr(actions, "dismiss_dialog", lambda ctx: False)
+    monkeypatch.setattr(actions, "open_tab", lambda ctx, name: None)
+    monkeypatch.setattr(actions, "use_slot", lambda *a: False)       # stunned: Eat never takes
+    t.ensure_hp()                                                    # waits, no StopBot
