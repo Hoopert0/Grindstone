@@ -4,7 +4,7 @@ import time
 
 import win32api
 
-from lumberjack import actions
+from lumberjack import actions, singleplayer_guard
 from lumberjack.core.input import AgentInput
 from lumberjack.core.window import GameWindow
 from lumberjack.ui import inventory
@@ -23,6 +23,7 @@ class BotBase:
     def __init__(self, max_minutes=None, max_logs=None, stop_event=None, pause_event=None,
                  map_name=None, start_mode="here", start_spot=None, keep_carried=True, clear_at_start=False):
         self.log = logging.getLogger(self.name)
+        singleplayer_guard.require()          # offline singleplayer only - see singleplayer_guard.py
         self.win = GameWindow()
         self.inp = AgentInput()
         self.ctx = actions.Ctx(self.win, self.inp, self.sleep, grabber=self.grab)
@@ -51,6 +52,10 @@ class BotBase:
     def check_stop(self):
         if win32api.GetAsyncKeyState(STOP_KEY) & 0x8000:
             raise StopBot("F12 pressed")
+        try:
+            singleplayer_guard.require()      # re-checked once a minute: never online
+        except singleplayer_guard.NotSingleplayer as e:
+            raise StopBot(str(e))
         if self.stop_event is not None and self.stop_event.is_set():
             raise StopBot("stopped from control panel")
         if self.deadline and time.monotonic() > self.deadline:

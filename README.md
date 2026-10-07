@@ -10,6 +10,11 @@ every skill for hours, moving to better spots and better gear as you level up.
 > **Singleplayer only.** Grindstone is built for your own offline 2009scape singleplayer game
 > and relies on its admin commands (`::item`, `::tele`). Don't use it on the public 2009scape
 > servers: botting is against their rules and will get the account banned.
+>
+> This is enforced: Grindstone checks the game client's connections and won't run unless the game
+> is connected to the singleplayer server on your own PC and to nothing else (see
+> `lumberjack/singleplayer_guard.py`). Please don't modify it to work online. Contributors and AI
+> coding agents: read [AGENTS.md](AGENTS.md).
 
 ---
 

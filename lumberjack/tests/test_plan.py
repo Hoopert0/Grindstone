@@ -702,6 +702,8 @@ def test_every_task_builds_its_bot(monkeypatch):
         if name.startswith("lumberjack.skills.") and hasattr(mod, "GameWindow"):
             monkeypatch.setattr(mod, "GameWindow", lambda *a, **k: None)
             monkeypatch.setattr(mod, "AgentInput", lambda *a, **k: types.SimpleNamespace(close=lambda: None))
+    from lumberjack import singleplayer_guard
+    monkeypatch.setattr(singleplayer_guard, "require", lambda: None)   # a fake game: nothing to check
     ctl = server.BotController()
     names = {}
     for task in list(server.TASK_LEVEL_SKILLS) + ["woodcutting"]:
@@ -720,6 +722,8 @@ def test_gather_mode_turns_tasks_into_their_gathering_bots(monkeypatch):
         if name.startswith("lumberjack.skills.") and hasattr(mod, "GameWindow"):
             monkeypatch.setattr(mod, "GameWindow", lambda *a, **k: None)
             monkeypatch.setattr(mod, "AgentInput", lambda *a, **k: types.SimpleNamespace(close=lambda: None))
+    from lumberjack import singleplayer_guard
+    monkeypatch.setattr(singleplayer_guard, "require", lambda: None)   # a fake game: nothing to check
     monkeypatch.setattr(server, "_levels", lambda: {"fletching": 20, "firemaking": 5})
     ctl = server.BotController()
     g = lambda task: ctl.build_bot(server.Settings(task=task, map=None, train_mode="gather"))   # noqa: E731
