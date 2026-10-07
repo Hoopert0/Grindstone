@@ -198,6 +198,7 @@ class FishCooker(Fisher):
     def make_fire(self, logs):
         """Light a fire from a spare log (chopping one first if needed). Returns the logs
         left, or None if no fire could be lit."""
+        logs = self.only_logs(logs)
         if not logs:
             logs = self.chop_logs()
             if not logs:
@@ -205,6 +206,7 @@ class FishCooker(Fisher):
         self.state = "lighting a fire"
         for _ in range(3):
             actions.dismiss_dialog(self.ctx)
+            self.find_tinderbox()
             if firemaking.light_one(self.ctx, self.tinder_slot, logs[0]):
                 self.burned += 1
                 self.log.info("Lit a fire (%d so far)", self.burned)
@@ -216,16 +218,36 @@ class FishCooker(Fisher):
         self.log.warning("Couldn't light a fire")
         return None
 
+    def only_logs(self, slots):
+        """Of these slots, the ones game data says hold logs (all of them without game data).
+        Using the tinderbox on anything else only says "Nothing interesting happens"."""
+        from lumberjack.core import backpack
+        inv = backpack.slots()
+        if inv is None:
+            return list(slots)
+        return [i for i in slots if i < len(inv) and backpack.kind(inv[i]["key"]) == "log"]
+
+    def find_tinderbox(self):
+        """Re-find the tinderbox by name: drops, spawns and banking can move it."""
+        from lumberjack.core import backpack
+        inv = backpack.slots()
+        if inv is None:
+            return
+        at = backpack.find("tinderbox", inv)
+        if at and at[0] != self.tinder_slot:
+            self.keep_slots = (set(self.keep_slots) - {self.tinder_slot}) | {at[0]}
+            self.tinder_slot = at[0]
+
     def chop_logs(self):
         """Chop up to LOG_ROOM logs from a nearby tree. Returns the new log slots."""
         types = usable_trees(self.fire_trees, self.levels, names_known=self.gs is not None)
+        self.ensure_axe()                    # before the snapshot: a spawned axe is not a log
         before = {i for i, o in enumerate(inventory.occupied(self.grab())) if o}
         want = min(LOG_ROOM, 28 - len(before))
         if want <= 0:
             self.log.warning("No room in the backpack for a log")
             return []
         self.state = "chopping logs for a fire"
-        self.ensure_axe()
         for _ in range(CHOP_TRIES):
             got = {i for i, o in enumerate(inventory.occupied(self.grab())) if o} - before
             if len(got) >= want:
@@ -235,7 +257,7 @@ class FishCooker(Fisher):
                 self.scan_camera("tree")
                 continue
             self.wait_chop(before, want)
-        new = sorted({i for i, o in enumerate(inventory.occupied(self.grab())) if o} - before)
+        new = self.only_logs(sorted({i for i, o in enumerate(inventory.occupied(self.grab())) if o} - before))
         if new:
             self.log.info("Chopped %d log(s) for a fire", len(new))
         else:

@@ -144,3 +144,20 @@ def test_thieving_doesnt_stop_when_food_is_there_but_eating_missed(monkeypatch):
     monkeypatch.setattr(actions, "open_tab", lambda ctx, name: None)
     monkeypatch.setattr(actions, "use_slot", lambda *a: False)       # stunned: Eat never takes
     t.ensure_hp()                                                    # waits, no StopBot
+
+
+def test_the_tinderbox_is_only_used_on_logs_never_a_freshly_spawned_axe(monkeypatch):
+    from lumberjack.core import backpack
+    from lumberjack.skills import firemaking, fish_cook
+    inv = [{"id": 590, "key": "tinderbox"}, {"id": 335, "key": "raw_trout"}, {"id": 1353, "key": "steel_axe"},
+           {"id": 1511, "key": "logs"}] + [{"id": -1, "key": ""}] * 24
+    monkeypatch.setattr(backpack, "slots", lambda: inv)
+    cls = next(v for v in vars(fish_cook).values() if isinstance(v, type) and hasattr(v, "make_fire"))
+    b = cls.__new__(cls)
+    b.ctx, b.state, b.burned, b.tinder_slot, b.keep_slots = None, "", 0, 5, {5}
+    b.log = __import__("logging").getLogger("t")
+    used = []
+    monkeypatch.setattr(firemaking, "light_one", lambda ctx, t, l: used.append((t, l)) or True)
+    monkeypatch.setattr(fish_cook.actions, "dismiss_dialog", lambda ctx: False)
+    assert b.make_fire([2, 3]) == []
+    assert used == [(0, 3)] and b.tinder_slot == 0 and b.keep_slots == {0}
