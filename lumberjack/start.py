@@ -112,6 +112,8 @@ def start_panel(append=False):
 
 
 def start(force=False):
+    from lumberjack.singleplayer_guard import NOTICE
+    print("\n" + "=" * 78 + "\n  SINGLEPLAYER ONLY\n  " + NOTICE + "\n" + "=" * 78 + "\n", flush=True)
     clients = [(pid, cmd) for pid, cmd in java_processes() if "2009scape.jar" in cmd]
     if any("-javaagent" in cmd for _, cmd in clients):
         print("The game is already running.")

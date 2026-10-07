@@ -24,6 +24,11 @@ CHECK_EVERY_S = 60.0
 
 _pid = None
 _ok_until = 0.0
+_announced = False
+
+NOTICE = ("Grindstone is ONLY for your own offline 2009scape singleplayer game. Botting on the online "
+          "2009scape servers is against their rules and WILL get your account banned. Grindstone "
+          "refuses to run when the game is connected to anything but the singleplayer server on this PC.")
 
 
 class NotSingleplayer(RuntimeError):
@@ -81,6 +86,14 @@ def _client_connections():
         if conns:
             return conns
     return []
+
+
+def announce(log):
+    """Put the notice in the run log (once per panel start)."""
+    global _announced
+    if not _announced:
+        _announced = True
+        log.warning("NOTICE: %s", NOTICE)
 
 
 def require():

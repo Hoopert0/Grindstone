@@ -23,6 +23,7 @@ class BotBase:
     def __init__(self, max_minutes=None, max_logs=None, stop_event=None, pause_event=None,
                  map_name=None, start_mode="here", start_spot=None, keep_carried=True, clear_at_start=False):
         self.log = logging.getLogger(self.name)
+        singleplayer_guard.announce(self.log)
         singleplayer_guard.require()          # offline singleplayer only - see singleplayer_guard.py
         self.win = GameWindow()
         self.inp = AgentInput()
