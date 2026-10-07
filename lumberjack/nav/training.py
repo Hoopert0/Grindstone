@@ -19,7 +19,7 @@ STARTER_PLACES = {
     "★ Lumbridge chickens": {"tile": [3233, 3295], "plane": 0},
     "★ Lumbridge cows": {"tile": [3258, 3276], "plane": 0},
     "★ Lumbridge goblins": {"tile": [3250, 3238], "plane": 0},
-    "★ Al Kharid warriors": {"tile": [3293, 3173], "plane": 0, "note": "the palace"},
+    "★ Al Kharid warriors": {"tile": [3292, 3169], "plane": 0, "note": "the palace hall"},
     "★ Lumbridge men": {"tile": [3232, 3210], "plane": 0, "note": "men & women by the houses south of the castle"},
     "★ Edgeville men": {"tile": [3097, 3509], "plane": 0,
                         "note": "7 men round the Edgeville houses (West Ardougne's people never showed in game)"},

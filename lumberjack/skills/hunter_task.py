@@ -32,6 +32,7 @@ TRAP_RADIUS = 8
 HOME_RADIUS = 6                    # wandered further than this -> walk back
 FREE_SLOTS = 4
 FOREIGN_S = 600                    # a trap that isn't ours is left alone this long
+CAP_S = 90                      # a trap limit the game insisted on holds this long
 
 
 def max_traps(level):
@@ -153,10 +154,12 @@ class Hunter(BotBase):
             interact.walk_to_tile(self.ctx, self.gs, list(self.home), arrive=2)
             return
         if self.said("high enough hunter level to set up more than"):
-            self.cap = len(laid)               # the game counts a trap we lost track of: stop at this
-            self.log.info("The game says that's our trap limit - keeping %d out", len(laid))
+            # the game counts a trap we lost track of (one mid-catch or mid-collapse): hold
+            # at what we see for a while - it resolves itself, then lay the full count again
+            self.cap, self.cap_until = len(laid), time.monotonic() + CAP_S
+            self.log.info("The game says that's our trap limit - keeping %d out for now", len(laid))
         limit = max_traps(self.level())
-        if self.cap is not None:
+        if self.cap is not None and time.monotonic() < getattr(self, "cap_until", 0):
             limit = min(limit, max(1, self.cap))
         if len(laid) < limit:
             self.lay(len(laid))

@@ -46,9 +46,11 @@ HOUSE_RADIUS = 20
 BUSY_LIMIT = 10                 # tries in a row that build/remove nothing before going in again
 
 
-def best_deco(space_id, level):
-    """(index, name, xp) of the best decoration for a garden space at `level`, or None."""
-    ok = [(i, n, xp) for i, (n, lv, xp) in enumerate(SPACES.get(space_id, [])) if lv <= level]
+def best_deco(space_id, level, skip=()):
+    """(index, name, xp) of the best decoration for a garden space at `level`, or None (`skip`:
+    (space, index) pairs the furniture box wouldn't build)."""
+    ok = [(i, n, xp) for i, (n, lv, xp) in enumerate(SPACES.get(space_id, []))
+          if lv <= level and (space_id, i) not in skip]
     return max(ok, key=lambda d: d[2]) if ok else None
 
 
@@ -145,7 +147,7 @@ class Constructor(BotBase):
         if portal is None:
             self.log.warning("No house portal in sight at Rimmington")
             return False
-        self.state = "entering the house (building mode)"
+        self.state = "teleporting into the house (building mode)"
         if not interact.use_option(self.ctx, self.gs, interact.points_for(portal), "Enter", portal["name"]):
             interact.walk_to_tile(self.ctx, self.gs, portal["tile"], arrive=1)
             if not interact.use_option(self.ctx, self.gs, interact.points_for(portal), "Enter", portal["name"]):
@@ -157,6 +159,8 @@ class Constructor(BotBase):
             self.sleep(0.6)
             try:
                 if self.in_house():
+                    from lumberjack.nav import places
+                    places.teleported_at = time.monotonic()   # the house is far off the map: not a death
                     self.log.info("In the house, building mode")
                     actions.reset_camera(self.ctx)
                     return True
@@ -234,7 +238,8 @@ class Constructor(BotBase):
         if built:
             return self.remove(min(built, key=lambda l: l.get("dist", 99)))
         lv = self.level()
-        spaces = [(l, best_deco(l.get("id"), lv)) for l in locs if "Build" in (l.get("ops") or [])]
+        skip = getattr(self, "bad_decos", set())
+        spaces = [(l, best_deco(l.get("id"), lv, skip)) for l in locs if "Build" in (l.get("ops") or [])]
         spaces = [(l, d) for l, d in spaces if d is not None]
         if not spaces:
             return False
@@ -250,6 +255,9 @@ class Constructor(BotBase):
             return True                          # (moved: counts as doing something)
         if not self.choose_in_box(index, name):
             self.close_box()
+            if not hasattr(self, "bad_decos"):
+                self.bad_decos = set()
+            self.bad_decos.add((loc.get("id"), index))     # the next best one there instead
             return False
         if self.wait_xp(6.0):
             self.built += 1

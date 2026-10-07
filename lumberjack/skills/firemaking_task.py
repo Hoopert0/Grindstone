@@ -17,6 +17,9 @@ from lumberjack.ui import inventory
 LOG_LEVELS = {"logs": 1, "oak_logs": 15, "willow_logs": 30, "maple_logs": 45, "yew_logs": 60, "magic_logs": 75}
 
 
+LANES = (0, 2, -2, 4, -4)       # rows (tiles north/south of the start) the loads take turns on
+
+
 class Firemaker(BotBase):
     name = "firemaking"
 
@@ -153,7 +156,9 @@ class Firemaker(BotBase):
         from lumberjack.core import backpack, gamestate
         gs = gamestate.shared()
         self.log.info("Spawning logs and burning them here (no bank needed)")
-        self.home = gs.player()["tile"]
+        self.home = self.base = list(gs.player()["tile"])
+        self.lane = 0
+        self.chat_handled = ("can't light a fire here",)      # burn_all steps aside by itself
         while True:
             self.check_stop()
             slot = items.ensure(self.ctx, lambda k: k == "tinderbox", "tinderbox", log=self.log)
@@ -165,6 +170,10 @@ class Firemaker(BotBase):
             self.keep_slots = set(self.keep_slots) | {self.tinder_slot}
             logs_held = [i for i, s in enumerate(inv) if s["key"] in LOG_LEVELS]
             if not logs_held:
+                # each load starts on its own row: the last row's fires are still burning
+                off = LANES[self.lane % len(LANES)]
+                self.lane += 1
+                self.home = [self.base[0], self.base[1] + off]
                 self.walk_home(gs)
                 if not self.spawn_load():
                     raise StopBot("couldn't spawn logs (backpack full of other things?)")
@@ -213,7 +222,7 @@ class Firemaker(BotBase):
         """Each load lights a line of fires away from where we stand: go back first."""
         from lumberjack.core import interact
         me = gs.player()["tile"]
-        if self.home and max(abs(me[0] - self.home[0]), abs(me[1] - self.home[1])) > 4:
+        if self.home and max(abs(me[0] - self.home[0]), abs(me[1] - self.home[1])) > 0:
             self.state = "walking back"
             interact.walk_to_tile(self.ctx, gs, self.home, arrive=1)
 

@@ -129,6 +129,8 @@ def check_chat(bot, gs, now, stop_cls):
             continue
         if not text or not PROBLEM.search(text):
             continue
+        if any(h in text.lower() for h in getattr(bot, "chat_handled", ())):
+            continue                            # the bot deals with this one itself (moves on)
         hits = [t for t in times.get(text, []) if now - t < REPEAT_WINDOW_S] + [now]
         times[text] = hits
         if len(hits) == 1:

@@ -339,7 +339,11 @@ def dismiss_dialog(ctx):
     from lumberjack.ui import widgets
     gs = gamestate.shared()
     if gs is not None and widgets.continue_dialog(ctx, gs):     # read from the game's interfaces
-        log.info("Closed a dialog (level up?)")
+        said = widgets.last_dialog
+        if said and "advanced" not in said.lower() and "congratulations" not in said.lower():
+            log.info("Closed a dialog: %s", said[:120])
+        else:
+            log.info("Closed a dialog (level up?)")
         return True
     # "Click here to continue" is blue text near the bottom of the chatbox dialog; its x
     # position varies with the dialog, so look for a run of pure-blue text in that band.

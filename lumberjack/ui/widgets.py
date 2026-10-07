@@ -56,13 +56,27 @@ _no_dialog_at = float("-inf")
 DIALOG_CHECK_S = 1.0            # loops call this every pass; a full interface read once a second is plenty
 
 
+last_dialog = ""                # what the last dialog we closed said ("You don't have any feathers left.")
+
+
+def dialog_text(gs, iface):
+    """The text of interface `iface` (a dialog), "Click here to continue" left out."""
+    if iface is None:
+        return ""
+    parts = [w["text"] for w in find(gs, str(iface)) if w.get("if") == iface and w.get("text")
+             and "click here to continue" not in w["text"].lower()]
+    return " ".join(dict.fromkeys(p.strip() for p in parts if p.strip()))
+
+
 def continue_dialog(ctx, gs):
     """Click "Click here to continue" if a dialog shows it. True if clicked."""
     global _no_dialog_at
     if time.monotonic() - _no_dialog_at < DIALOG_CHECK_S:
         return False
+    global last_dialog
     for w in find(gs, "click here to continue"):
         if w["w"] > 0 and w["h"] > 0:
+            last_dialog = dialog_text(gs, w.get("if"))
             x, y = center(w)
             ctx.inp.click(x + random.randint(-8, 8), y + random.randint(-1, 1))
             ctx.sleep(0.6)

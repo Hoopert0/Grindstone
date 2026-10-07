@@ -61,9 +61,9 @@ def fetch_tinderbox(ctx, walker=None, bank_xy=None, return_xy=None, keep_slots=(
 
 
 def _step_aside(ctx):
-    """Walk 3-5 tiles in a random direction (a fresh, fire-free tile)."""
+    """Walk 5-8 tiles in a random direction (a fresh, fire-free tile)."""
     ang = random.uniform(0, 2 * math.pi)
-    r = random.uniform(12, 20)                 # minimap px (~4 per tile)
+    r = random.uniform(20, 32)                 # minimap px (~4 per tile): clear of the last fires
     ctx.inp.click(MM.CENTER[0] + r * math.cos(ang), MM.CENTER[1] + r * math.sin(ang))
     ctx.sleep(3.5)
 

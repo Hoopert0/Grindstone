@@ -11,7 +11,7 @@ a plan step with place "auto" (the training route: right spot + settings for the
        multiple of 10 - and it stays on that skill until the milestone is reached (a run that
        stops gaining XP is ended by the stall guard and counts as a problem)
 
-A task that ends badly twice in a row is rested for COOLDOWN_S, so one broken skill can't
+A task that ends badly (after its 3 tries) is rested for COOLDOWN_S, so one broken skill can't
 stall the run.
 """
 import time
@@ -29,7 +29,7 @@ SPEED = ["prayer", "herblore", "runecrafting", "farming", "magic", "fletching", 
 COMBAT_BASE = 10
 PRAYER_EARLY = 43
 STEP_MINUTES = None                # no time cap: a step ends at its milestone level
-FAILS_BEFORE_REST = 2
+FAILS_BEFORE_REST = 1        # a step only "fails" after 3 tries of its own: rest it straight away
 COOLDOWN_S = 3600
 
 

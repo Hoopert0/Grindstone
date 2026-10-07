@@ -201,3 +201,6 @@ def test_the_games_trap_limit_is_respected(field):
     field.said.append("You don't have a high enough Hunter level to set up more than 2 traps.")
     h.tick()
     assert h.cap == 2 and h.laid == 0 and h.state.startswith("waiting")
+    h.cap_until = 0                                     # a while later: the full count again
+    h.tick()
+    assert h.laid == 1 or h.state.startswith("spawning")

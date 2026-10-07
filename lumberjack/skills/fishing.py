@@ -793,6 +793,7 @@ class Fisher(BotBase):
                 break
             if actions.dismiss_dialog(self.ctx):   # level-up stops fishing
                 self.level_up = True
+                self.after_dialog()
                 break
             self.sleep(0.2)
         self.sleep(SERVER_TICK)
@@ -807,6 +808,19 @@ class Fisher(BotBase):
         if self.failed_clicks >= MAX_FAILED_CLICKS:
             raise StopBot(f"{self.failed_clicks} tries without a catch - right tool ({TOOLS[self.method]})"
                           f" and level ({METHOD_LEVELS[self.method]}+)?")
+
+    def after_dialog(self):
+        """The game stops fishing with a dialog, not a chat line: "You don't have any feathers
+        left." / "You need a fly fishing rod to lure these fish." - get the tools again."""
+        from lumberjack.ui import widgets
+        said = (widgets.last_dialog or "").lower()
+        if "fishing level" in said:
+            raise StopBot(widgets.last_dialog)
+        if ("don't have any" in said or "you need a" in said) and self.spawn_tools:
+            self.log.info("The game says the %s are missing - getting them again", TOOLS[self.method])
+            widgets.last_dialog = ""
+            self.ensure_tools()
+            self.failed_clicks = 0
 
     # ---- full inventory --------------------------------------------------------------
     def handle_full_inventory(self):

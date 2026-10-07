@@ -60,6 +60,7 @@ EMPTY_ROUNDS_BEFORE_WALK = 2
 APPROACH_WALKS = 3              # minimap walks toward NPC dots before trying saved spots
 GIVE_UP_ROUNDS = 60             # ~5+ minutes with nothing to attack -> stop
 SKIP_TARGET_S = 60              # a monster we couldn't fight (unreachable, taken) is left this long
+REPOSITION_EVERY = 5           # attacks in a row that never start a fight before moving
 NO_FIGHT_LIMIT = 15            # this many attacks in a row that never start a fight: wrong spot
 MM_PER_TILE = 4                 # minimap px per game tile
 TAKE_ACTION = "take"            # white "Take" before an orange ground-item name
@@ -185,6 +186,10 @@ class Fighter(BotBase):
             self.gs = gamestate.shared()
             if self.gs:
                 log.info("Reading the game's own data: monsters by name, HP, who's fighting whom")
+                try:
+                    self.home_tile = list(self.gs.player()["tile"])    # where the run began
+                except Exception:
+                    self.home_tile = None
             else:
                 missing = [t for t in ["attack"] + self.targets if not mouseover.available(t)]
                 if missing:
@@ -709,6 +714,8 @@ class Fighter(BotBase):
                     self.equip_ranged()                  # out of arrows? (no fight starts without them)
                 self.target_index = None
                 self.no_fights = getattr(self, "no_fights", 0) + 1 if result == "no_engage" else 0
+                if self.no_fights and self.no_fights % REPOSITION_EVERY == 0 and self.no_fights < NO_FIGHT_LIMIT:
+                    self.reposition()                   # behind a fence / out of sight: move, try again
                 if self.no_fights >= NO_FIGHT_LIMIT:
                     raise StopBot(f"{self.no_fights} attacks in a row never started a fight here "
                                   "(out of reach / line of sight?) - giving this spot a rest")
@@ -985,6 +992,23 @@ class Fighter(BotBase):
         if self.fight_spots is not None:
             return [(n, s) for n, s in wm.spots.items() if n in self.fight_spots]
         return [(n, s) for n, s in wm.spots.items() if s.get("kind") == "combat"]
+
+    def reposition(self):
+        """Attacks keep fizzling (ranged has no line of sight past a fence; melee can't path
+        round it): walk back to where the run began, a few tiles off so it's a fresh angle."""
+        home = getattr(self, "home_tile", None)
+        if not home or not self.gs:
+            return
+        from lumberjack.core import interact
+        tile = [home[0] + random.randint(-3, 3), home[1] + random.randint(-3, 3)]
+        log.info("%d attacks in a row never started a fight - moving to %s for a clear shot",
+                 self.no_fights, tile)
+        self.state = "repositioning"
+        try:
+            interact.walk_to_tile(self.ctx, self.gs, tile, arrive=1, max_clicks=6)
+        except Exception as e:
+            log.info("Couldn't reposition: %s", e)
+        self.skip_until = {}                       # those monsters may be reachable from here
 
     def walk_to_next_spot(self):
         """Walk to the next saved combat spot (round-robin), skipping the one we're at."""

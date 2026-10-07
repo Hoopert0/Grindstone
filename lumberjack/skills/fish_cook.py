@@ -225,6 +225,7 @@ class FishCooker(Fisher):
             self.log.warning("No room in the backpack for a log")
             return []
         self.state = "chopping logs for a fire"
+        self.ensure_axe()
         for _ in range(CHOP_TRIES):
             got = {i for i, o in enumerate(inventory.occupied(self.grab())) if o} - before
             if len(got) >= want:
@@ -240,6 +241,21 @@ class FishCooker(Fisher):
         else:
             self.log.warning("Couldn't chop any %s logs nearby", "/".join(types))
         return new
+
+    def ensure_axe(self):
+        """Chopping fire logs needs an axe ("You do not have an axe to use."): spawn one when
+        none is carried or worn, and keep it."""
+        if not (self.gs and self.spawn_tools):
+            return
+        from lumberjack import items
+        from lumberjack.core import backpack, gamestate
+        lv = (gamestate.skill("woodcutting") or {}).get("base", 1)
+        slot = items.ensure_best(self.ctx, items.AXE_ORDER, items.best_axe(lv), log=self.log, gs=self.gs)
+        if slot is not None and slot >= 0:
+            self.keep_slots = set(self.keep_slots) | {slot}
+        for i, it in enumerate(backpack.slots() or []):   # an axe carried before stays kept too
+            if it["key"] in items.AXE_ORDER:
+                self.keep_slots = set(self.keep_slots) | {i}
 
     def click_tree(self, types):
         if self.gs:

@@ -14,6 +14,7 @@ import time
 from lumberjack import actions, items
 from lumberjack.skills.base import BotBase, StopBot
 
+SKIP_S = 90               # an NPC we can't reach is left alone this long
 ATTEMPT_S = 1.9            # a pickpocket takes ~3 ticks
 STUN_S = 5.0               # caught: stunned ~4 s
 NO_TARGET_S = 90           # nothing to pickpocket this long -> stop (a plan travels back)
@@ -102,7 +103,12 @@ class Thief(BotBase):
     def pick_target(self):
         from lumberjack.core import interact
         from lumberjack.core.backpack import key
-        cands = [n for n in self.gs.npcs() if key(n["name"]) in self.targets and "Pickpocket" in n["ops"]]
+        now = time.monotonic()
+        skip = getattr(self, "skip", None)
+        if skip is None:
+            skip = self.skip = {}
+        cands = [n for n in self.gs.npcs() if key(n["name"]) in self.targets and "Pickpocket" in n["ops"]
+                 and skip.get(n.get("index"), 0) <= now]
         cands.sort(key=lambda n: n["dist"])
         for n in cands[:4]:
             if interact.on_screen(*n["screen"]):
@@ -117,6 +123,7 @@ class Thief(BotBase):
         from lumberjack.core import interact
         hp0, _, xp0 = self._hp_xp()
         self.state = f"pickpocketing a {n['name']}"
+        self.cant_reach()                          # (only what the game says after this click counts)
         if interact.use_option(self.ctx, self.gs, interact.points_for(n), "Pickpocket", n["name"]) is None:
             self.sleep(0.5)
             return
@@ -125,10 +132,28 @@ class Thief(BotBase):
         hp1, _, xp1 = self._hp_xp()
         if xp1 > xp0:
             self.stolen += 1
+        elif self.cant_reach():
+            # behind a wall / across a fence: leave that one alone for a while, try another
+            self.skip[n.get("index")] = time.monotonic() + SKIP_S
+            self.log.info("Can't reach that %s - trying another", n["name"])
         elif hp1 < hp0:
             self.caught += 1
             self.state = "stunned"
             self.sleep(STUN_S)
+
+    def cant_reach(self):
+        """Did the game just say "I can't reach that."? (New chat lines only.)"""
+        try:
+            chat = self.gs.chat(5)
+        except Exception:
+            return False
+        count = chat.get("count", 0)
+        seen = getattr(self, "chat_seen", None)
+        self.chat_seen = count
+        if seen is None:
+            return False
+        new = max(0, min(count - seen, 5))
+        return any("can't reach" in (l.get("text") or "").lower() for l in chat.get("lines", [])[:new])
 
     def ensure_hp(self):
         hp, base, _ = self._hp_xp()

@@ -93,11 +93,12 @@ def approach_tile(o, loc):
 SWEEP_STEP = 9              # px between the hover points of a sweep over an unplaced obstacle
 
 
-def sweep_points(o, loc, fit, me):
+def sweep_points(o, loc, fit, me, lift=(0, 0)):
     """An obstacle the add-on found but couldn't place on screen: a grid of hover points over
     every tile it may cover (its known tiles, its footprint, the tiles between it and us), from
     the tile -> screen map - the model sits somewhere on those tiles, and only hovering its
-    model gives its option. Nearest the obstacle's own tile first."""
+    model gives its option. Nearest the obstacle's own tile first. `lift`: how far a raised
+    obstacle (the rope, up on the platforms) sits from its tile's ground point on screen."""
     from lumberjack.core import interact
     if fit is None:
         tiles = []
@@ -110,6 +111,7 @@ def sweep_points(o, loc, fit, me):
     seen, out = set(), []
     for tx, ty in tiles:
         cx, cy = fit(tx, ty)
+        cx, cy = cx + lift[0], cy + lift[1]
         for dy in (-SWEEP_STEP, 0, SWEEP_STEP):
             for dx in (-SWEEP_STEP, 0, SWEEP_STEP):
                 p = (cx + dx, cy + dy)
@@ -264,6 +266,13 @@ class Agility(BotBase):
         locs = self.gs.locs(OBSTACLE_RADIUS)
         fit = interact.screen_fit(locs)
         pts += interact.footprint_points(loc, fit)
+        lift = (0, 0)
+        if fit is not None and plane > 0 and interact.valid_screen(loc.get("screen")):
+            # the fit is drawn from ground-level objects: up on the platforms everything sits
+            # higher - by as much as the game's own point for this obstacle is off its tile's
+            fx, fy = fit(*loc["tile"])
+            lift = (loc["screen"][0] - fx, loc["screen"][1] - fy)
+            pts += sweep_points(o, loc, fit, self.gs.player(), lift)
         pts += sweep_points(o, loc, fit, self.gs.player())
         pts = list(dict.fromkeys(p for p in pts if interact.on_screen(*p)))
         if not pts:
