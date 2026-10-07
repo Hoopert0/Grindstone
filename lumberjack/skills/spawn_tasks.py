@@ -273,9 +273,18 @@ class Crafter(SupplyTask):
     SUPPLY = GEMS
 
     def process(self, inv, supply_slots, tools):
+        from lumberjack.core import backpack
         kind = inv[supply_slots[0]]["key"]
-        before = self.count({kind})
-        if not actions.use_on_slot(self.ctx, self.gs, tools["chisel"], supply_slots[0]):
+        # a level-up box ends the wait below but not the cutting: let it finish, or the chisel
+        # lands on a gem cut meanwhile ("You need a Fletching level of 56" - bolt tips)
+        went = self.wait_used({kind}, still_s=1.5)
+        if went:
+            return went
+        slots = [i for i, s in enumerate(backpack.slots() or []) if s["key"] == kind]
+        if not slots:
+            return 0
+        before = len(slots)
+        if not actions.use_on_slot(self.ctx, self.gs, tools["chisel"], slots[0]):
             return 0
         if not make_all(self.ctx, self.gs):
             return self.wait_used({kind}, still_s=2.0, start=before)   # a single gem cuts straight away

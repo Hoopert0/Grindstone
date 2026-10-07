@@ -465,3 +465,21 @@ def test_thief_waits_out_combat_then_fights_back(game, monkeypatch):
     assert t.out_of_combat() and attacks == ["Attack"]      # still attacked: hit back
     me["in_combat"] = False
     assert not t.out_of_combat()                             # free again: pickpocket on
+
+
+def test_crafting_waits_for_cutting_to_finish_before_using_the_chisel(game, monkeypatch):
+    c = bot(S.Crafter, game)
+    game.put("chisel")
+    game.put("uncut_sapphire", 3)
+    cutting = [1, 2, 3]                                       # still cutting after a level-up box
+
+    def sleep(s):
+        if cutting:
+            game.inv[cutting.pop(0)] = {"id": 1, "key": "sapphire", "name": "sapphire"}
+    c.sleep = sleep
+    chiselled = []
+    monkeypatch.setattr(actions, "use_on_slot", lambda ctx, gs, a, b: chiselled.append(b) or False)
+    assert c.process(game.inv, [1, 2, 3], {"chisel": 0}) == 3 and chiselled == []
+    game.put("uncut_sapphire")                                # slot 4: the only uncut gem left
+    c.process(game.inv, [4], {"chisel": 0})
+    assert chiselled == [4]

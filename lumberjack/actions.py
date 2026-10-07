@@ -461,7 +461,9 @@ def use_on_slot(ctx, gs, item_slot, target_slot):
     from lumberjack.core.gamestate import top_entry
     dismiss_dialog(ctx)
     if not use_slot(ctx, gs, item_slot, "Use"):
-        return False
+        open_tab(ctx, "inventory")             # after banking another tab can be showing
+        if not use_slot(ctx, gs, item_slot, "Use"):
+            return False
     x, y = R.INV_SLOTS[target_slot].center
     for _ in range(6):
         ctx.sleep(0.12)
