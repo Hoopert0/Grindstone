@@ -161,9 +161,17 @@ class FishCooker(Fisher):
         self.log.info("Cooking %d raw fish", len(raw))
         start_raw = list(raw)
         total, fires, stalls = len(raw), 0, 0
+        just_lit = False
         while raw and stalls < 3:
             self.state = "cooking"
             status, done = cooking.cook(self.ctx, raw)
+            if status == "no_fire" and just_lit:
+                # the fire we just lit wasn't usable yet (still stepping off it / not in the scene
+                # list): look again once before burning another log on a second fire
+                just_lit = False
+                self.settle()
+                continue
+            just_lit = False
             if status == "no_fire":
                 if fires >= MAX_FIRES:
                     self.log.warning("Lit %d fires and still can't cook - giving up on this load", fires)
@@ -172,6 +180,8 @@ class FishCooker(Fisher):
                 if logs is None:
                     break
                 fires += 1
+                just_lit = True
+                self.settle()
                 continue
             left = cooking.still_raw(self.ctx, raw)    # trust the hover, not the pixel diff
             stalls = 0 if len(left) < len(raw) else stalls + 1
@@ -192,7 +202,7 @@ class FishCooker(Fisher):
         ok = [i for i in raw if CATCH_LEVELS.get(inv[i]["key"], 0) <= lv]
         if len(ok) < len(raw):
             too = sorted({inv[i]["key"].replace("raw_", "") for i in raw if i not in ok})
-            self.log.info("Cooking %d can't cook %s yet - dropping those raw", lv, "/".join(too))
+            self.log.info("Can't cook %s yet (Cooking %d) - dropping those raw", "/".join(too), lv)
         return ok
 
     def make_fire(self, logs):
@@ -217,6 +227,18 @@ class FishCooker(Fisher):
             firemaking._step_aside(self.ctx)
         self.log.warning("Couldn't light a fire")
         return None
+
+    def settle(self, limit_s=3.0):
+        """After lighting a fire we step off it: wait until we've stopped moving."""
+        end = time.monotonic() + limit_s
+        self.sleep(0.6)
+        while self.gs and time.monotonic() < end:
+            try:
+                if not self.gs.player().get("moving"):
+                    break
+            except Exception:
+                break
+            self.sleep(0.2)
 
     def make_log_room(self):
         """A freshly spawned axe can take the last free slot ("No room in the backpack for a

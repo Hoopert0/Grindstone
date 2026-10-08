@@ -92,7 +92,7 @@ class Thief(BotBase):
         attacker = next((n for n in self.gs.npcs() if n.get("interacting") == mine and n.get("in_combat")), None)
         if attacker is not None and now - self.combat_since > COMBAT_WAIT_S and "Attack" in attacker["ops"]:
             self.state = f"fighting off a {attacker['name']}"
-            self.log.info("A %s keeps attacking - fighting back", attacker["name"])
+            self.log.info("%s keeps attacking - fighting back", attacker["name"])
             interact.use_option(self.ctx, self.gs, interact.points_for(attacker), "Attack", attacker["name"])
             self.sleep(3.0)
             return True

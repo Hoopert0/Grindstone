@@ -217,3 +217,23 @@ def test_cooking_picks_a_fire_from_the_menu_when_we_stand_over_it(monkeypatch):
     monkeypatch.setattr(G, "menu_row_point", lambda m, row: (310, 230 + 15 * row))
     assert cooking.use_on_fire_gs(ctx, gs, 5) is True
     assert any(c and abs(c[1] - 245) <= 1 for c in clicks)  # the "Use ... -> Fire" row, not Walk here
+
+
+def test_a_fresh_fire_gets_a_second_look_before_another_is_lit(monkeypatch):
+    """"Lit a fire / Cancelling a selected item / Lit a fire" - about every other load lit two
+    fires: the first wasn't usable yet while we stepped off it. Look again once first."""
+    from lumberjack.skills import cooking, fish_cook
+    cls = next(v for v in vars(fish_cook).values() if isinstance(v, type) and hasattr(v, "make_fire"))
+    b = cls.__new__(cls)
+    b.ctx, b.gs, b.keep_slots, b.state = None, None, set(), ""
+    b.log, b.sleep = __import__("logging").getLogger("t"), lambda s: None
+    monkeypatch.setattr(cooking, "sort_backpack", lambda ctx, keep: {"raw": [5, 6], "log": [7]})
+    b.cookable = lambda raw: raw
+    answers = ["no_fire", "no_fire", "ok"]               # none yet / the new one not ready / cooked
+    monkeypatch.setattr(cooking, "cook", lambda ctx, raw: (answers.pop(0), list(raw)))
+    monkeypatch.setattr(cooking, "still_raw", lambda ctx, raw: [])
+    fires = []
+    b.make_fire = lambda logs: fires.append(1) or []
+    monkeypatch.setattr(fish_cook.mouseover, "available", lambda name: True)
+    b.cook_load()
+    assert fires == [1] and answers == []
