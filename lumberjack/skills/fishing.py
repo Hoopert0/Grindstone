@@ -433,6 +433,26 @@ class Fisher(BotBase):
                 slot = self.spawn_tool(tool)
             if slot is not None:
                 self.keep_slots = set(self.keep_slots) | {slot}
+        self.drop_other_methods_tools()
+
+    def drop_other_methods_tools(self):
+        """Lobsters at Catherby don't need the fly rod, feathers and net from earlier tiers: drop
+        other methods' gear (named by the game's data) - it's spawned again if the method changes."""
+        if not (self.gs and self.spawn_tools):
+            return
+        from lumberjack.core import backpack
+        inv = backpack.slots()
+        if inv is None:
+            return
+        mine = set(TOOL_ITEMS[self.method])
+        other = {t for tools in TOOL_ITEMS.values() for t in tools} - mine
+        drop = [i for i, s in enumerate(inv) if s["key"] in other]
+        if not drop:
+            return
+        self.log.info("Dropping fishing gear %s doesn't use: %s", self.method,
+                      ", ".join(sorted({inv[i]["key"].replace("_", " ") for i in drop})))
+        actions.drop_known(self.ctx, self.gs, drop)
+        self.keep_slots = set(self.keep_slots) - set(drop)
 
     def spawn_tool(self, tool):
         """::item the tool and remember what it looks like. Returns its slot or None."""

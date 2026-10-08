@@ -237,3 +237,23 @@ def test_a_fresh_fire_gets_a_second_look_before_another_is_lit(monkeypatch):
     monkeypatch.setattr(fish_cook.mouseover, "available", lambda name: True)
     b.cook_load()
     assert fires == [1] and answers == []
+
+
+def test_lobster_fishing_drops_the_fly_rod_feathers_and_net(monkeypatch):
+    """The backpack at Catherby held a fly fishing rod, feathers and a small net from earlier
+    tiers - three slots that lobsters don't need."""
+    from lumberjack import actions
+    from lumberjack.core import backpack
+    from lumberjack.skills import fishing as F
+    inv = ([{"id": 301, "key": "lobster_pot"}, {"id": 309, "key": "fly_fishing_rod"},
+            {"id": 314, "key": "feather"}, {"id": 590, "key": "tinderbox"},
+            {"id": 303, "key": "small_fishing_net"}, {"id": 1357, "key": "adamant_axe"}]
+           + [{"id": -1, "key": ""}] * 22)
+    monkeypatch.setattr(backpack, "slots", lambda: inv)
+    dropped = []
+    monkeypatch.setattr(actions, "drop_known", lambda ctx, gs, slots: dropped.extend(slots))
+    f = F.Fisher.__new__(F.Fisher)
+    f.method, f.spawn_tools, f.gs, f.ctx = "cage", True, object(), None
+    f.keep_slots, f.log = {0, 1, 2, 3, 4, 5}, __import__("logging").getLogger("t")
+    f.drop_other_methods_tools()
+    assert sorted(dropped) == [1, 2, 4] and f.keep_slots == {0, 3, 5}
