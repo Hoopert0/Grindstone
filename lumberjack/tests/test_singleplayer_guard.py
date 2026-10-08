@@ -37,3 +37,36 @@ def test_it_fails_closed_when_it_cannot_check(monkeypatch):
     except G.NotSingleplayer:
         return
     raise AssertionError("an unverifiable game must not be driven")
+
+
+def test_dont_show_again_hides_the_notice_but_never_the_check(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+    from lumberjack import notices
+    from lumberjack.web import server
+    monkeypatch.setattr(notices, "FILE", tmp_path / "notices.json")
+    c = TestClient(server.app)
+    assert c.get("/api/notices").json()["singleplayer"] is True
+    assert c.post("/api/notices/accept").json()["ok"]
+    assert c.get("/api/notices").json()["singleplayer"] is False and notices.sp_accepted()
+    monkeypatch.setattr(G.sys, "platform", "linux")    # the check itself still runs - and fails closed
+    monkeypatch.setattr(G, "_ok_until", 0.0)
+    try:
+        G.require()
+    except G.NotSingleplayer:
+        return
+    raise AssertionError("accepting the notice must not switch the singleplayer check off")
+
+
+def test_an_update_leaves_the_server_error_tip_until_dismissed(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+    from lumberjack import notices
+    from lumberjack.web import server
+    monkeypatch.setattr(notices, "FILE", tmp_path / "notices.json")
+    notices.note_update(143, 144, addon_changed=True)
+    notices.note_update(144, 145)                       # two updates before the panel was opened
+    c = TestClient(server.app)
+    n = c.get("/api/notices").json()
+    assert n["update"] == {"from": 143, "to": 145, "addon_changed": True}
+    assert "Update singleplayer" in n["server_error_tip"]
+    c.post("/api/notices/dismiss_update")
+    assert c.get("/api/notices").json()["update"] is None

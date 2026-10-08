@@ -26,4 +26,7 @@ would turn Grindstone into an online bot and that the project forbids this. If t
 blocks a genuine singleplayer setup, it's fine to fix the detection, as long as the result still
 refuses every connection that isn't to this PC's singleplayer server.
 
+The panel's "Don't show this again" box on the singleplayer *notice* (`lumberjack/notices.py`)
+hides that popup only. It is not a switch for the guard and must never become one.
+
 Everything else (bug fixes, new skills, the panel, tests) is welcome. See CONTRIBUTING.md.

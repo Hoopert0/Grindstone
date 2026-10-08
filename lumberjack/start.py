@@ -93,7 +93,9 @@ def start_server():
         p.kill()
         raise
     if p.poll() is not None:
-        raise RuntimeError(f"The game server stopped while starting - see {LOGS / 'server.log'}")
+        from lumberjack import notices
+        raise RuntimeError(f"The game server stopped while starting - see {LOGS / 'server.log'}. "
+                           + notices.SERVER_ERROR_TIP)
     return p.pid
 
 
@@ -112,8 +114,12 @@ def start_panel(append=False):
 
 
 def start(force=False):
+    from lumberjack import notices
     from lumberjack.singleplayer_guard import NOTICE
-    print("\n" + "=" * 78 + "\n  SINGLEPLAYER ONLY\n  " + NOTICE + "\n" + "=" * 78 + "\n", flush=True)
+    if not notices.sp_accepted():          # ("don't show this again" in the panel hides only this box)
+        print("\n" + "=" * 78 + "\n  SINGLEPLAYER ONLY\n  " + NOTICE + "\n" + "=" * 78 + "\n", flush=True)
+    if notices.pending_update():
+        print(f"Just updated. {notices.SERVER_ERROR_TIP}\n", flush=True)
     clients = [(pid, cmd) for pid, cmd in java_processes() if "2009scape.jar" in cmd]
     if any("-javaagent" in cmd for _, cmd in clients):
         print("The game is already running.")

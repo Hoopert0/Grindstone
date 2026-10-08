@@ -95,6 +95,12 @@ def update():
     if res["updated"] and _git("diff", "--quiet", old, new, "--", "lumberjack/agent").returncode:
         res["addon_changed"] = True
     res.update(ok=True, message=(f"updated to v{res['to']}" if res["updated"] else "already up to date"))
+    if res["updated"]:
+        try:
+            from lumberjack import notices
+            notices.note_update(res["from"], res["to"], res["addon_changed"])   # the panel's restart tip
+        except OSError:
+            pass
     return res
 
 

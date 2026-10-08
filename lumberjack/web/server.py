@@ -20,7 +20,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from lumberjack import version
+from lumberjack import notices, version
 from lumberjack.core.window import GameWindow
 from lumberjack.ui import inventory
 from lumberjack.vision import trees
@@ -1977,6 +1977,7 @@ def update_now():
     msg = f"Updated to v{r['to']} - the panel restarts in a moment"
     if r["addon_changed"]:
         msg += ". The game add-on changed too: close the game and start Grindstone again when convenient"
+        msg += ". " + notices.SERVER_ERROR_TIP
     threading.Timer(1.5, restart_panel_process).start()    # after this reply has gone out
     return {"ok": True, "restarting": True, "message": msg}
 
@@ -2012,10 +2013,33 @@ def idle_updater():
             continue
         if r["addon_changed"]:
             log.warning("The game add-on changed too - close the game and start it with the Grindstone icon "
-                        "when convenient")
+                        "when convenient. %s", notices.SERVER_ERROR_TIP)
         log.info("Updated to v%s - restarting the panel", r["to"] or version.code_version()[0])
         restart_panel_process()
         return
+
+
+@app.get("/api/notices")
+def notices_get():
+    """The singleplayer notice (unless this PC ticked "don't show this again") and, after an
+    update, the restart tip."""
+    return {"singleplayer": not notices.sp_accepted(), "update": notices.pending_update(),
+            "server_error_tip": notices.SERVER_ERROR_TIP}
+
+
+@app.post("/api/notices/accept")
+def notices_accept():
+    """ "Don't show this again": hides the notice only - the singleplayer check always runs."""
+    notices.accept_sp()
+    logging.getLogger("panel").info("Singleplayer notice: \"don't show this again\" ticked - the user "
+                                    "accepts responsibility (the singleplayer check still runs)")
+    return {"ok": True}
+
+
+@app.post("/api/notices/dismiss_update")
+def notices_dismiss_update():
+    notices.dismiss_update()
+    return {"ok": True}
 
 
 @app.get("/api/running")

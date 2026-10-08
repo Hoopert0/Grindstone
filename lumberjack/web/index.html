@@ -74,6 +74,14 @@
   #spnotice h2 { margin: 0 0 10px; color: var(--gold); font-size: 18px; text-align: center; }
   #spnotice p { margin: 0 0 10px; }
   #spnotice button { margin-top: 8px; width: 100%; }
+  #spnotice label.accept { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; color: var(--muted);
+                           margin: 4px 0 2px; cursor: pointer; }
+  #spnotice label.accept input { margin-top: 2px; flex: none; }
+  #updnote { display: flex; gap: 10px; align-items: flex-start; margin: 10px 16px 0; padding: 10px 14px;
+             border: 1px solid var(--gold); border-radius: 10px; background: var(--panel); font-size: 13px; }
+  #updnote[hidden] { display: none; }
+  #updnote b { color: var(--gold); }
+  #updnote button { margin-left: auto; flex: none; }
   .opt.wide { display: block; }
   .tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
   .opt.tile span { display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -196,13 +204,21 @@
   <span id="where" class="hint" style="margin:0 0 0 auto"></span>
 </header>
 
-<div id="spnotice" role="dialog" aria-modal="true" aria-labelledby="sptitle">
+<div id="updnote" role="status" hidden>
+  <div><b id="updtitle">Updated</b> - <span id="updtip"></span></div>
+  <button id="updok" class="pill" type="button" title="Hide this until the next update">Got it</button>
+</div>
+
+<div id="spnotice" role="dialog" aria-modal="true" aria-labelledby="sptitle" hidden>
   <div class="box">
     <h2 id="sptitle">⚠ Singleplayer only</h2>
     <p>Grindstone is <b>only</b> for your own <b>offline 2009scape singleplayer</b> game.</p>
     <p>Botting on the online 2009scape servers is against their rules and <b>will get your account
        banned</b>. Grindstone checks the game's connection and refuses to run unless the game is
        connected to the singleplayer server on this PC.</p>
+    <label class="accept"><input id="spaccept" type="checkbox">
+      <span>Don't show this again. I accept full responsibility for how I use Grindstone.
+      (The singleplayer check keeps running either way.)</span></label>
     <button id="spok" class="go" type="button">I understand - singleplayer only</button>
   </div>
 </div>
@@ -743,11 +759,35 @@
 </main>
 
 <script>
-spNotice();
-function spNotice() {
+notices();
+async function notices() {
   const box = document.getElementById("spnotice"), ok = document.getElementById("spok");
-  ok.addEventListener("click", () => { box.hidden = true; });
-  ok.focus();
+  let n = { singleplayer: true, update: null };
+  try {
+    const r = await fetch("/api/notices");
+    if (r.ok) n = await r.json();
+  } catch (e) { /* panel not answering: show the notice */ }
+  ok.addEventListener("click", async () => {
+    box.hidden = true;
+    if (document.getElementById("spaccept").checked) {
+      await fetch("/api/notices/accept", { method: "POST" }).catch(() => {});
+    }
+  });
+  if (n.singleplayer) { box.hidden = false; ok.focus(); }
+  if (n.update) {
+    const u = n.update;
+    document.getElementById("updtitle").textContent =
+      u.from && u.from !== u.to ? `Updated v${u.from} \u2192 v${u.to}` : `Updated to v${u.to}`;
+    document.getElementById("updtip").textContent =
+      (u.addon_changed ? "the game add-on changed, so close the game and start Grindstone again when convenient. " : "")
+      + n.server_error_tip;
+    const note = document.getElementById("updnote");
+    note.hidden = false;
+    document.getElementById("updok").addEventListener("click", () => {
+      note.hidden = true;
+      fetch("/api/notices/dismiss_update", { method: "POST" }).catch(() => {});
+    });
+  }
 }
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));

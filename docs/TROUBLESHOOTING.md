@@ -19,6 +19,11 @@ When asking for help, attach `panel.log` (and the client/crash logs if the game 
 The add-on is loaded when the game starts. Close the game and start it with the Grindstone icon
 (not the 2009scape launcher's own client).
 
+**A server error after an update and a game restart**
+Close the game, open the 2009scape launcher and run **Update singleplayer**, close the launcher,
+then start Grindstone again. If it keeps happening, send `logs\server.log` and `logs\client.log`
+from straight after the error.
+
 **"A 2009scape window from the launcher is open"**
 Close the client the launcher opened; Grindstone starts its own.
 

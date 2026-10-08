@@ -130,6 +130,10 @@ restarts on it; you can also press **⬆ Update to vN**. Autopilot updates itsel
 and a plan can too (Plan tab → *Update between steps*) - either carries on after the restart. When
 the game's add-on changed, restart the game with the Grindstone icon when convenient.
 
+**Server error after an update?** If the game shows a server error after you restart it: close
+the game, open the 2009scape launcher and run **Update singleplayer**, close the launcher, then
+start Grindstone again. The panel shows this tip after each update until you press *Got it*.
+
 What your PC learned in game is always kept. If you've edited the code yourself, the update is
 skipped and the panel tells you which files are in the way.
 
