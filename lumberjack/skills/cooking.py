@@ -58,6 +58,7 @@ LOGS = actions.LOG_ITEMS
 
 BEIGE = np.array([156, 193, 212])          # dialog parchment (BGR), as in actions.dismiss_dialog
 FIRE_OFFSETS = [(0, 0), (0, -6), (0, 6), (-6, 0), (6, 0)]
+NEAR_FIRE = 2              # tiles: a fire this close may hide behind our own model
 FIRE_RADIUS = 6                           # tiles searched for a fire to cook on (game data)
 BOX_WAIT_S = 3.5
 STILL_TICKS = 8                           # x 0.8 s with no slot changing -> cooking stopped
@@ -264,7 +265,10 @@ def use_on_fire_gs(ctx, gs, slot):
     top entry is 'Use <fish> -> Fire'. None if there's no fire nearby (nothing selected)."""
     from lumberjack.core import interact
     from lumberjack.core.gamestate import top_entry
-    fires = [l for l in gs.locs(FIRE_RADIUS, "fire") if l["name"] == "Fire" and interact.on_screen(*l["screen"])]
+
+    def fires_in_view():
+        return [l for l in gs.locs(FIRE_RADIUS, "fire") if l["name"] == "Fire" and interact.on_screen(*l["screen"])]
+    fires = fires_in_view()
     if not fires:
         return None
     x, y = R.INV_SLOTS[slot].center
@@ -274,32 +278,45 @@ def use_on_fire_gs(ctx, gs, slot):
 
     def on_fire(e):
         return bool(e) and e.get("verb") == "Use" and (e.get("subject") or "").lower().endswith("fire")
-    for f in fires[:3]:
-        for px, py in interact.points_for(f):
-            if not interact.on_screen(px, py):
-                continue
-            px, py = px + random.randint(-2, 2), py + random.randint(-2, 2)
-            ctx.inp.move(px, py)
-            ctx.sleep(random.uniform(0.1, 0.16))
-            m = gs.menu()
-            if on_fire(top_entry(m)):
-                ctx.inp.click()
-                log.info("Using slot %d on a fire %d tile(s) away", slot + 1, f["dist"])
-                return True
-            if any(on_fire(e) for e in m.get("entries") or []):
-                # a fresh fire sits next to us: our own model (or another) is on top - pick the
-                # fire from the right-click menu instead of lighting another one
-                ctx.inp.right_click(px, py)
-                ctx.sleep(random.uniform(0.2, 0.3))
+
+    def try_fires(fires):
+        for f in fires[:3]:
+            for px, py in interact.points_for(f):
+                if not interact.on_screen(px, py):
+                    continue
+                px, py = px + random.randint(-2, 2), py + random.randint(-2, 2)
+                ctx.inp.move(px, py)
+                ctx.sleep(random.uniform(0.1, 0.16))
                 m = gs.menu()
-                e = next((e for e in m.get("entries") or [] if on_fire(e)), None)
-                if m.get("open") and e:
-                    rx, ry = menu_row_point(m, e["row"])
-                    ctx.inp.click(rx + random.randint(-12, 12), ry + random.randint(-1, 1))
-                    log.info("Using slot %d on a fire %d tile(s) away (menu)", slot + 1, f["dist"])
+                if on_fire(top_entry(m)):
+                    ctx.inp.click()
+                    log.info("Using slot %d on a fire %d tile(s) away", slot + 1, f["dist"])
                     return True
-                ctx.inp.move(px, max(R.VIEWPORT.y + 30, py - 90))   # leaving closes the menu
-                ctx.sleep(0.2)
+                if any(on_fire(e) for e in m.get("entries") or []):
+                    # a fresh fire sits next to us: our own model (or another) is on top - pick the
+                    # fire from the right-click menu instead of lighting another one
+                    ctx.inp.right_click(px, py)
+                    ctx.sleep(random.uniform(0.2, 0.3))
+                    m = gs.menu()
+                    e = next((e for e in m.get("entries") or [] if on_fire(e)), None)
+                    if m.get("open") and e:
+                        rx, ry = menu_row_point(m, e["row"])
+                        ctx.inp.click(rx + random.randint(-12, 12), ry + random.randint(-1, 1))
+                        log.info("Using slot %d on a fire %d tile(s) away (menu)", slot + 1, f["dist"])
+                        return True
+                    ctx.inp.move(px, max(R.VIEWPORT.y + 30, py - 90))   # leaving closes the menu
+                    ctx.sleep(0.2)
+        return False
+    if try_fires(fires):
+        return True
+    if any(f["dist"] <= NEAR_FIRE for f in fires):
+        # the fire we just lit is right next to us and our own model hides it from the mouse
+        # ("Cancelling a selected item", then a second fire): turn the camera and look again,
+        # the fish still selected
+        log.info("Can't get at the fire next to us - turning the camera")
+        actions.rotate_camera(ctx, 1)
+        if try_fires(fires_in_view()):
+            return True
     _deselect(ctx)
     return False
 

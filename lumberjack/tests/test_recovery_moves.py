@@ -296,6 +296,33 @@ def test_cooking_picks_a_fire_from_the_menu_when_we_stand_over_it(monkeypatch):
     assert any(c and abs(c[1] - 245) <= 1 for c in clicks)  # the "Use ... -> Fire" row, not Walk here
 
 
+def test_a_fire_hidden_behind_us_is_found_after_turning_the_camera(monkeypatch):
+    """"Lit a fire / Cancelling a selected item / Cancelling a selected item / Lit a fire": the
+    fire next to us never showed "Use -> Fire" under the mouse - our own model covered it."""
+    from lumberjack import actions
+    from lumberjack.core import interact
+    from lumberjack.skills import cooking
+    fire = {"name": "Fire", "screen": [300, 200], "dist": 1}
+    state = {"turned": False}
+    hidden = {"verb": "Walk here", "subject": "", "row": 0}
+    use = {"verb": "Use", "subject": "Raw swordfish -> Fire", "row": 0}
+    gs = types.SimpleNamespace(locs=lambda r, n: [fire],
+                               menu=lambda: {"open": False, "entries": [use if state["turned"] else hidden]})
+    clicks, cancels = [], []
+    ctx = types.SimpleNamespace(sleep=lambda s: None, inp=types.SimpleNamespace(
+        click=lambda *a: clicks.append(a), move=lambda *a, **k: None, right_click=lambda *a: None))
+    monkeypatch.setattr(interact, "on_screen", lambda x, y, margin=4: True)
+    monkeypatch.setattr(interact, "points_for", lambda t: [(300, 200)])
+    monkeypatch.setattr(actions, "rotate_camera", lambda ctx, q=1: state.update(turned=True))
+    monkeypatch.setattr(actions, "cancel_selection", lambda ctx, force=False: cancels.append(1))
+    assert cooking.use_on_fire_gs(ctx, gs, 5) is True
+    assert state["turned"] and not cancels and len(clicks) == 2   # the fish, then the fire
+
+    state["turned"], fire["dist"] = False, 5               # a fire further off: no camera turn
+    monkeypatch.setattr(actions, "rotate_camera", lambda ctx, q=1: pytest.fail("turned"))
+    assert cooking.use_on_fire_gs(ctx, gs, 5) is False and cancels == [1]
+
+
 def test_a_fresh_fire_gets_a_second_look_before_another_is_lit(monkeypatch):
     """"Lit a fire / Cancelling a selected item / Lit a fire" - about every other load lit two
     fires: the first wasn't usable yet while we stepped off it. Look again once first."""
