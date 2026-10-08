@@ -76,6 +76,7 @@ NO_CATCH_S = 75                  # busy (or "busy") this long without a catch ->
 NEVER_STARTED_S = 6              # no movement this long after clicking -> missed
 DUD_SPOT_S = 45                  # a spot a click caught nothing at is passed over this long
 MAX_FAILED_CLICKS = 6            # clicks in a row that caught nothing...
+CHECKED_S = 120.0                # a stretch of shore that had no spot for us: skip it this long
 NO_CATCH_STOP_S = 180.0          # ...and nothing caught for this long -> stop (spots hop about a lot)
 SCANS_BEFORE_MOVING = 4
 EMPTY_ROUNDS_BEFORE_GIVING_UP = 12
@@ -603,9 +604,14 @@ class Fisher(BotBase):
         from lumberjack.core import interact
         from lumberjack.nav import spot_memory
         me = self.gs.player()["tile"]
-        tile, source = spot_memory.nearest(verb, me, self.REMEMBERED_MAX)
-        if tile is None or max(abs(tile[0] - me[0]), abs(tile[1] - me[1])) <= 4:
+        now = time.monotonic()
+        checked = {t: until for t, until in getattr(self, "checked_spots", {}).items() if until > now}
+        checked[tuple(me)] = now + CHECKED_S          # nothing for us here right now
+        self.checked_spots = checked
+        tile, source = spot_memory.nearest(verb, me, self.REMEMBERED_MAX, skip=list(checked))
+        if tile is None:
             return False
+        checked[tuple(tile)] = now + CHECKED_S        # if it's empty there too, try the next one
         dist = max(abs(tile[0] - me[0]), abs(tile[1] - me[1]))
         self.state = "walking back to the fishing spots"
         self.log.info("No %s spot in range - walking to %s (%d tiles)",

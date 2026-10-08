@@ -186,7 +186,8 @@ def test_spot_memory_remembers_and_finds_nearest(tmp_path, monkeypatch):
     assert not M.remember({"tile": [3101, 3251], "ops": ["Net", "Bait"]})      # the same spot, shuffled
     assert M.remember({"tile": [3110, 3270], "ops": ["Lure", "Bait"]})
     assert M.nearest("Net", (3100, 3245)) == ((3100, 3250), "remembered")
-    assert M.nearest("Lure", (3112, 3268))[0] == (3110, 3270)
+    assert M.nearest("Lure", (3112, 3260))[0] == (3110, 3270)
+    assert M.nearest("Lure", (3112, 3268)) == (None, None)                    # standing there: it moved on
     M._cache = None                                                            # reloads from the file
     assert M.nearest("Net", (3100, 3245))[0] == (3100, 3250)
     assert M.nearest("Cage", (2830, 3420)) == ((2850, 3432), "★ Catherby fishing")   # built-in fallback
@@ -215,3 +216,19 @@ def test_fish_cook_only_cooks_what_the_level_can(monkeypatch):
     assert f.cookable([0, 1, 2, 3]) == [0, 1, 3]          # swordfish needs 45; unknown fish is tried
     monkeypatch.setattr(backpack, "slots", lambda: None)
     assert f.cookable([0, 1, 2]) == [0, 1, 2]             # no game data: try them all
+
+
+def test_a_moved_cage_spot_sends_us_up_the_beach_not_nowhere(tmp_path, monkeypatch):
+    """Catherby: the Cage spot we stood at moved; the nearest remembered Cage tile was where we
+    stood, so the bot never walked and gave up after a long search - four times in one run."""
+    from lumberjack.nav import spot_memory as M
+    monkeypatch.setattr(M, "FILE", tmp_path / "fishing_spots.json")
+    monkeypatch.setattr(M, "_cache", None)
+    for t in ([2837, 3431], [2845, 3429], [2855, 3423]):
+        M.remember({"tile": t, "ops": ["Cage", "Harpoon"]})
+    me = (2837, 3432)
+    first = M.nearest("Cage", me)[0]
+    assert first == (2845, 3429)
+    second = M.nearest("Cage", me, skip=[first])[0]
+    assert second == (2850, 3432)                                             # the ★ place, then on
+    assert M.nearest("Cage", me, skip=[first, second])[0] == (2855, 3423)

@@ -60,14 +60,20 @@ def remember(spot):
         return new
 
 
-def nearest(verb, me, max_dist=80):
-    """(tile, source) of the closest place a `verb` spot was seen within max_dist, or (None, None)."""
+HERE = 4                       # a remembered tile this close is where we stand: nothing there now
+
+
+def nearest(verb, me, max_dist=80, skip=()):
+    """(tile, source) of the closest place a `verb` spot was seen within max_dist, or (None, None).
+    Tiles where we stand or that were just checked (`skip`) don't count - the spot moved on, so
+    the next place along the shore is the one to try."""
     with _lock:
         cands = [(t, "remembered") for t in _load().get(verb, [])]
     from lumberjack.nav.training import STARTER_PLACES
     cands += [(tuple(STARTER_PLACES[p]["tile"]), p) for p, verbs in PLACE_VERBS.items()
               if verb in verbs and p in STARTER_PLACES]
-    cands = [(t, s) for t, s in cands if _far(t, me) <= max_dist]
+    cands = [(t, s) for t, s in cands if HERE < _far(t, me) <= max_dist
+             and all(_far(t, k) > HERE for k in skip)]
     if not cands:
         return None, None
     return min(cands, key=lambda c: _far(c[0], me))
