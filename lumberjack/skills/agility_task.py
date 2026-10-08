@@ -9,6 +9,7 @@ Courses and their obstacles come from the 2009scape server's own course code.
 """
 import time
 
+from lumberjack import actions
 from lumberjack.skills.base import BotBase, StopBot
 
 OBSTACLE_RADIUS = 15
@@ -16,6 +17,7 @@ LAND_S = 20.0              # an obstacle takes up to ~10 s (the pipe); wait for 
 TRIES = 4                  # clicks on one obstacle that never moved us -> back to the start
 STILL_BEFORE_S = 8.0       # still before the obstacle this long after a click -> click again
 LOST_LIMIT = 6             # teleports to the start in a row without progress -> stop
+ADJACENT = 2               # this close and still not clickable: turn the camera, don't walk
 MISS_LIMIT = 8             # looks (~1 s apart) that never saw the obstacle -> back to the start
 SETTLE_S = 2.0             # after a teleport: let the scene load before looking for obstacles
 
@@ -277,7 +279,11 @@ class Agility(BotBase):
         pts = list(dict.fromkeys(p for p in pts if interact.on_screen(*p)))
         if not pts:
             self.log.info("Can't place %s on screen (too few objects around to measure by)", loc["name"])
-        where = (loc.get("id"), tuple(me["tile"]), plane)
+        try:
+            yaw = self.gs.camera().get("yaw_target")
+        except Exception:
+            yaw = None
+        where = (loc.get("id"), tuple(me["tile"]), plane, yaw)     # screen points hold for one camera angle
         good = getattr(self, "good_points", {}).get(where)
         if good:                                 # what worked from this very tile last lap
             pts = [good] + pts
@@ -295,6 +301,12 @@ class Agility(BotBase):
             self.log.info("Couldn't click %s %s at %s (screen %s, the mouse shows %s) - walking closer",
                           o["op"], loc["name"], loc["tile"], loc.get("screen"),
                           f'"{top["verb"]} {top["subject"]}"' if top else "nothing")
+            if loc.get("dist", 99) <= ADJACENT:
+                # right next to it already ("Can't get closer"): walking does nothing - look at it
+                # from another angle (the rope up on the platform hides behind us or off the edge)
+                self.log.info("Turning the camera to see %s from another side", loc["name"])
+                actions.rotate_camera(self.ctx, 1)
+                return "noclick"
             # off screen: get closer - to the course tile nearest it (walking onto the obstacle's
             # own row left the course: "Off the course" and back to the start)
             interact.walk_to_tile(self.ctx, self.gs, approach_tile(o, loc), arrive=0, max_clicks=4)

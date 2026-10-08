@@ -223,3 +223,27 @@ def test_walking_closer_stays_on_the_course():
     net = A.GNOME["obstacles"][1]
     assert A.approach_tile(net, {"tile": [2471, 3425]}) == [2471, 3426]
     assert A.next_obstacle(A.GNOME, (2471, 3426), 0)[1] is net
+
+
+def test_an_obstacle_right_beside_us_gets_a_new_camera_angle_not_a_walk(course, monkeypatch):
+    """Up on the platform the rope wouldn't take a click from where we stood ("Can't get closer
+    (1 tiles away)" - four times, then back to the start): turn the camera and try again."""
+    from lumberjack import actions
+    course.tile, course.plane = (2477, 3420), 2
+    a = runner(course, monkeypatch)
+    turns, walks, tries = [], [], {"n": 0}
+    monkeypatch.setattr(actions, "rotate_camera", lambda ctx, q=1: turns.append(q))
+    monkeypatch.setattr(interact, "walk_to_tile", lambda *a, **k: walks.append(1))
+
+    def use(ctx, gs, points, verb, subject):
+        tries["n"] += 1
+        if tries["n"] == 1:
+            return None                                  # first angle: the rope isn't clickable
+        course.tile, course.plane = LANDS[2312]
+        return 300, 200
+    monkeypatch.setattr(interact, "use_option", use)
+    rope = A.GNOME["obstacles"][3]
+    locs = [dict(l, dist=1) for l in course.locs()]
+    course.locs = lambda radius=15, name=None: locs
+    assert a.do(rope, course.player()) == "noclick" and turns == [1] and walks == []
+    assert a.do(rope, course.player()) == "done"
