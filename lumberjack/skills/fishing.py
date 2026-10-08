@@ -66,7 +66,7 @@ STACKS = {"fishing_bait": 500, "feather": 500}   # stackables spawn as one stack
 
 CANDIDATES_TRIED = 6
 WALK_TO_SPOT_TILES = 40           # an off-screen spot this close is walked to (game data)
-GS_IDLE_READS = 7                 # ~1.4 s of "not animating, not walking" = stopped fishing
+GS_IDLE_READS = 12                # ~2.4 s of "not animating, walking or facing a spot" = stopped
 HOVER_READS = (0.12, 0.12, 0.15)  # seconds before each re-read of one hover point
 HOVER_OFFSETS = [(0, 0), (0, -5), (-5, 3), (5, 3), (0, -11), (-9, -4), (9, -4)]
 BAD_SPOT_S = 8                   # skip a non-spot hover position for this long
@@ -373,7 +373,8 @@ class Fisher(BotBase):
             pl = self.gs.player()
         except GameStateError:
             return None
-        return pl.get("anim", -1) != -1 or bool(pl.get("moving"))
+        # the fishing animation drops out between casts: still facing the spot counts as fishing
+        return pl.get("anim", -1) != -1 or bool(pl.get("moving")) or pl.get("interacting", -1) not in (-1, None)
 
     def learn_catch(self, new):
         """Make sure the newest catch is recognised as a raw fish: an unknown "Use <name>" in

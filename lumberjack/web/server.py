@@ -1544,7 +1544,10 @@ class BotController:
         full = [i for i, s in enumerate(inv) if s["id"] >= 0]
         spare = [i for i in full if not (task and backpack.needed_for(inv[i]["key"], task))]
         products = [i for i in full if backpack.is_product(inv[i]["key"], food=False)
-                    or (i in spare and inv[i]["key"] in backpack.STARTER)]
+                    or (i in spare and inv[i]["key"] in backpack.STARTER)
+                    # another task's tools (axe, pickaxe, knife...): spawned again when needed
+                    or (task and i in spare and backpack.kind(inv[i]["key"]) == "tool"
+                        and inv[i]["key"] != "coins")]
         if not products and len(spare) < TIDY_SPARE:
             return
         from lumberjack.core import gamestate

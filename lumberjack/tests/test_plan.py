@@ -388,7 +388,9 @@ def test_tidy_banks_what_the_next_task_does_not_use(monkeypatch):
     assert trips == [{2}]                                # only the pickaxe stays
     monkeypatch.setattr(bank, "gs_bank_trip", lambda ctx, keep_slots=(): False)
     ctl._tidy_backpack(None, logging.getLogger("t"), "mining")
-    assert drops == [{0, 1, 2, 6, 7}]                    # no bank: drop only products, loot, starter kit
+    # no bank: drop products, loot, starter kit and other tasks' tools (spawned again when
+    # needed) - the pickaxe and the unknown item stay
+    assert drops == [{2, 7}]
 
 
 def test_tidy_drops_a_few_leftovers_instead_of_a_bank_trip(monkeypatch):
@@ -928,3 +930,15 @@ def test_a_single_start_travels_even_with_an_old_recorded_map_selected(monkeypat
     s = server.Settings(task="fishing", fish_method="lure", map="home", fish_spot="pier", start_mode="spot")
     ctl._run_single_at_spot(s, __import__("logging").getLogger("t"))
     assert runs == [("★ Lumbridge river", None, "here")]
+
+
+def test_fishing_counts_facing_the_spot_as_fishing_between_casts():
+    """The lure animation drops out between casts: the bot took that for "stopped" after 1.4 s
+    and clicked the spot again every 3 s."""
+    import types as _t
+    from lumberjack.skills import fishing as F
+    f = F.Fisher.__new__(F.Fisher)
+    f.gs = _t.SimpleNamespace(player=lambda: {"anim": -1, "moving": False, "interacting": 12})
+    assert f.busy_from_game() is True
+    f.gs = _t.SimpleNamespace(player=lambda: {"anim": -1, "moving": False, "interacting": -1})
+    assert f.busy_from_game() is False
