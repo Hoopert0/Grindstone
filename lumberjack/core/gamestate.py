@@ -37,6 +37,10 @@ TIMEOUT_S = 4.0                 # most queries answer in milliseconds
 HEAVY_TIMEOUT_S = 12.0          # scans of the scene / bank
 HEAVY = {"locs", "ground", "npcs", "inv", "widgets"}
 SLOW_S = 1.5
+# queries the add-on runs on the game's per-frame hook: with the window minimized the game draws
+# no frames and each waited out the add-on's 3 s timeout ("game busy")
+FRAME_QUERIES = {"inv", "ground", "locs", "widgets", "login", "camera", "varbit"}
+BUSY_PAUSE_S = 2.0              # after a "game busy", frame queries fail at once for this long
 LOADING_STATES = {25, 28}       # the client's gameState while it loads a new area
 LOADING_WAIT_S = 10.0
 log = logging.getLogger("gamestate")
@@ -44,6 +48,11 @@ log = logging.getLogger("gamestate")
 
 class GameStateError(RuntimeError):
     pass
+
+
+class GameBusy(GameStateError):
+    """The game isn't drawing frames right now (minimized?): the add-on is fine, ask again soon.
+    Not a reason to give up on game data."""
 
 
 def clean(subject):
@@ -70,6 +79,8 @@ class GameState:
         self.lock = threading.Lock()
         self._ok = None
         self._slow_logged = 0.0
+        self._busy_until = 0.0
+        self._busy_logged = False
 
     def close(self):
         if self.sock:
@@ -83,7 +94,10 @@ class GameState:
         """Ask the add-on; one line of JSON back. Scans of the scene get longer to answer. On a
         timeout the connection is dropped (a late reply would be read as the next answer) and
         the question asked once more on a fresh one."""
-        heavy = cmd.split(" ", 1)[0] in HEAVY
+        head = cmd.split(" ", 1)[0]
+        heavy = head in HEAVY
+        if head in FRAME_QUERIES and time.monotonic() < self._busy_until:
+            raise GameBusy("game busy (not drawing)")
         with self.lock:
             for attempt in (1, 2):
                 t0 = time.monotonic()
@@ -101,6 +115,15 @@ class GameState:
                         raise GameStateError(f"input add-on not reachable: {e}")
                     log.warning("Game data query '%s' failed (%s) - retrying", cmd, e)
             took = time.monotonic() - t0
+            if "game busy" in line:
+                self._busy_until = time.monotonic() + BUSY_PAUSE_S
+                if not self._busy_logged:
+                    self._busy_logged = True
+                    log.info("The game isn't drawing (window minimized?) - game data that needs a "
+                             "drawn frame waits for it")
+                raise GameBusy(line[4:] if line.startswith("err ") else line)
+            if head in FRAME_QUERIES:
+                self._busy_logged = False
             if took > SLOW_S and time.monotonic() - self._slow_logged > 60:
                 self._slow_logged = time.monotonic()
                 log.info("Game data query '%s' took %.1f s", cmd, took)
@@ -299,6 +322,8 @@ def tolerant_call(bot, fn, *a, logger=None):
         out = fn(*a)
         bot._gs_failures = 0
         return out
+    except GameBusy:
+        return None                               # not drawing for a moment: skip, don't count
     except GameStateError as e:
         bot._gs_failures = getattr(bot, "_gs_failures", 0) + 1
         if bot._gs_failures >= GIVE_UP_AFTER:

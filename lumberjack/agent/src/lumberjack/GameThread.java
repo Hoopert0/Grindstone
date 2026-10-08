@@ -19,6 +19,8 @@ final class GameThread extends plugin.Plugin {
     private static volatile boolean registered;
     private static volatile long lastRun;
     private static final long RUNNING_MAX_MS = 8000;   // a started lookup may take this much longer
+    private static final long IDLE_NS = 1_000_000_000L;   // no frame for this long = not drawing
+    private static final long IDLE_WAIT_MS = 1000;        // then wait only this long for one
 
     private GameThread() {}
 
@@ -78,6 +80,9 @@ final class GameThread extends plugin.Plugin {
             started.set(true);
             return work.call();
         });
+        // not drawing for a while (window minimized): a frame is unlikely in the next 3 s either
+        long last = lastRun;
+        if (last != 0 && System.nanoTime() - last > IDLE_NS) timeoutMs = Math.min(timeoutMs, IDLE_WAIT_MS);
         QUEUE.add(t);
         try {
             try {

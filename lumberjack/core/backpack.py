@@ -75,6 +75,8 @@ def slots():
         return None
     try:
         out = gs.inv()
+    except gamestate.GameBusy:
+        return None                     # the game isn't drawing for a moment - keep the link
     except gamestate.GameStateError:
         gamestate.drop_shared()         # the game closed / add-on gone: fall back for a while
         return None
@@ -90,6 +92,8 @@ def worn():
         return None
     try:
         return [key(s["name"]) for s in gs.inv(94) if s.get("id", -1) >= 0]
+    except gamestate.GameBusy:
+        return None                     # the game isn't drawing for a moment - keep the link
     except gamestate.GameStateError:
         gamestate.drop_shared()
         return None

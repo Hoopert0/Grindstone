@@ -154,3 +154,41 @@ def test_player_waits_out_loading_then_says_logged_out(monkeypatch):
         gs.player()                                             # the login screen: a clear error
     answers.update(player=[{"logged_in": False}])
     assert gs.player(raw=True) == {"logged_in": False}
+
+
+def test_a_game_that_isnt_drawing_pauses_frame_queries_but_keeps_game_data(monkeypatch):
+    """23:25 "Game data query 'widgets click here to continue' took 3.0 s": minimized, the game
+    drew no frames and each interface/backpack read waited out the add-on's timeout - and a
+    backpack read that failed that way switched game data off for 20 s."""
+    from lumberjack.core import backpack
+    asked = []
+    srv = socket.socket()
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(1)
+
+    def serve():
+        conn, _ = srv.accept()
+        for line in conn.makefile("r"):
+            asked.append(line.strip())
+            conn.sendall(b"err java.lang.IllegalStateException: game busy (no frame drawn in 1000 ms)\n")
+    threading.Thread(target=serve, daemon=True).start()
+    gs = G.GameState(port=srv.getsockname()[1])
+    try:
+        gs._q("widgets click here to continue")
+        assert False, "expected GameBusy"
+    except G.GameBusy:
+        pass
+    try:
+        gs.inv()                                # within the pause: not even asked
+        assert False, "expected GameBusy"
+    except G.GameBusy:
+        pass
+    assert asked == ["state widgets click here to continue"]
+    monkeypatch.setattr(G, "_shared", gs)
+    dropped = []
+    monkeypatch.setattr(G, "drop_shared", lambda: dropped.append(1))
+    monkeypatch.setattr(backpack, "source", lambda: gs)
+    assert backpack.slots() is None and not dropped          # the link stays up
+    bot = type("B", (), {})()
+    assert G.tolerant_call(bot, gs.inv) is None and getattr(bot, "_gs_failures", 0) == 0
+    gs.close()

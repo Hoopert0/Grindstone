@@ -69,6 +69,8 @@ def _game_minimap():
         return None
     try:
         return gs.minimap()
+    except gamestate.GameBusy:
+        return None
     except gamestate.GameStateError:
         gamestate.drop_shared()
         return None
