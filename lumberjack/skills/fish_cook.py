@@ -33,6 +33,7 @@ MAX_FIRES = 4              # fires per load before giving up on the rest of the 
 CHOP_TRIES = 8
 CHOP_TIMEOUT_S = 60
 FIRE_TREE_RADIUS = 20      # tiles searched for a tree to cut fire logs from (game data)
+BAD_TREE_S = 300           # a tree the game says we "can't reach" is left alone this long
 
 
 def usable_trees(allowed, levels, available=mouseover.available, names_known=False):
@@ -67,6 +68,8 @@ class FishCooker(Fisher):
         self.cooked = self.burnt = 0
         self.tinder_slot = None
         self.chop_activity = ActivityMonitor()
+        self.bad_trees = {}                  # tile -> monotonic time it may be tried again
+        self.last_tree = None
 
     def stats(self):
         hrs = (time.monotonic() - self.started) / 3600
@@ -257,6 +260,18 @@ class FishCooker(Fisher):
         if drop:
             self.log.info("Dropping %d fish to make room for fire logs", len(drop))
             actions.drop_known(self.ctx, self.gs, drop)
+            end = time.monotonic() + 3          # the drops land on the next game tick or two
+            while time.monotonic() < end and 28 - len(self.occupied()) < LOG_ROOM:
+                self.sleep(0.3)
+
+    def occupied(self, frame=None):
+        """Filled backpack slots: game data when there is any (a minimized window or a drop
+        still in flight fools the pixels), else read from the screen."""
+        from lumberjack.core import backpack
+        inv = backpack.slots()
+        if inv is not None:
+            return {i for i, s in enumerate(inv) if s["id"] >= 0}
+        return {i for i, o in enumerate(inventory.occupied(frame if frame is not None else self.grab())) if o}
 
     def only_logs(self, slots):
         """Of these slots, the ones game data says hold logs (all of them without game data).
@@ -283,22 +298,31 @@ class FishCooker(Fisher):
         types = usable_trees(self.fire_trees, self.levels, names_known=self.gs is not None)
         self.ensure_axe()                    # before the snapshot: a spawned axe is not a log
         self.make_log_room()
-        before = {i for i, o in enumerate(inventory.occupied(self.grab())) if o}
+        before = self.occupied()
         want = min(LOG_ROOM, 28 - len(before))
         if want <= 0:
             self.log.warning("No room in the backpack for a log")
             return []
         self.state = "chopping logs for a fire"
-        for _ in range(CHOP_TRIES):
-            got = {i for i, o in enumerate(inventory.occupied(self.grab())) if o} - before
-            if len(got) >= want:
-                break
-            kind = self.click_tree(types)
-            if not kind:
-                self.scan_camera("tree")
-                continue
-            self.wait_chop(before, want)
-        new = self.only_logs(sorted({i for i, o in enumerate(inventory.occupied(self.grab())) if o} - before))
+        handled = getattr(self, "chat_handled", ())
+        self.chat_handled = tuple(handled) + ("can't reach that",)   # we pick another tree ourselves
+        try:
+            for _ in range(CHOP_TRIES):
+                if len(self.occupied() - before) >= want:
+                    break
+                self.last_tree = None
+                self.reach_said()                    # only what the game says after this click counts
+                kind = self.click_tree(types)
+                if not kind:
+                    self.scan_camera("tree")
+                    continue
+                self.wait_chop(before, want)
+                if self.last_tree and self.reach_said():
+                    self.bad_trees[self.last_tree] = time.monotonic() + BAD_TREE_S
+                    self.log.info("Can't reach that tree - trying another")
+        finally:
+            self.chat_handled = handled
+        new = self.only_logs(sorted(self.occupied() - before))
         if new:
             self.log.info("Chopped %d log(s) for a fire", len(new))
         else:
@@ -319,6 +343,19 @@ class FishCooker(Fisher):
         for i, it in enumerate(backpack.slots() or []):   # an axe carried before stays kept too
             if it["key"] in items.AXE_ORDER:
                 self.keep_slots = set(self.keep_slots) | {i}
+
+    def reach_said(self):
+        """Did the game say "I can't reach that." since we last looked? (Game data chat.)"""
+        try:
+            chat = self.gs.chat(5)
+        except Exception:
+            return False
+        count = chat.get("count", 0)
+        seen, self.tree_chat_seen = getattr(self, "tree_chat_seen", None), count
+        if seen is None:
+            return False
+        new = max(0, min(count - seen, 5))
+        return any("can't reach" in (l.get("text") or "").lower() for l in chat.get("lines", [])[:new])
 
     def click_tree(self, types):
         if self.gs:
@@ -348,11 +385,14 @@ class FishCooker(Fisher):
         from lumberjack.core import interact
         from lumberjack.skills.woodcutting import TREE_BY_NAME
         near = [(TREE_BY_NAME.get(l["name"].lower()), l) for l in self.gs.locs(FIRE_TREE_RADIUS)]
-        near = [(k, l) for k, l in near if k in types and "Chop down" in l["ops"]]
+        now = time.monotonic()
+        near = [(k, l) for k, l in near if k in types and "Chop down" in l["ops"]
+                and self.bad_trees.get(tuple(l["tile"]), 0) <= now]
         near.sort(key=lambda kl: (types.index(kl[0]), kl[1]["dist"]))   # best type, then nearest
         for kind, loc in [kl for kl in near if interact.on_screen(*kl[1]["screen"])][:4]:
             if interact.use_option(self.ctx, self.gs, interact.points_for(loc), "Chop down", loc["name"]):
                 self.log.info("Chopping a %s for a fire (%d tile(s) away)", loc["name"].lower(), loc["dist"])
+                self.last_tree = tuple(loc["tile"])
                 return kind
         if near and not walked:
             kind, loc = min(near, key=lambda kl: kl[1]["dist"])
@@ -375,8 +415,8 @@ class FishCooker(Fisher):
         while time.monotonic() - start < CHOP_TIMEOUT_S:
             frame = self.grab()
             self.chop_activity.update(frame)
-            got = {i for i, o in enumerate(inventory.occupied(frame)) if o} - before
-            if len(got) >= want or inventory.is_full(frame):
+            filled = self.occupied(frame)
+            if len(filled - before) >= want or len(filled) >= 28:
                 return
             if self.chop_activity.active:
                 started = True

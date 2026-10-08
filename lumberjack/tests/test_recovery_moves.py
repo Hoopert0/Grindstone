@@ -175,8 +175,85 @@ def test_a_spawned_axe_in_the_last_slot_still_leaves_room_for_fire_logs(monkeypa
     cls = next(v for v in vars(fish_cook).values() if isinstance(v, type) and hasattr(v, "make_fire"))
     b = cls.__new__(cls)
     b.ctx, b.gs, b.keep_slots, b.log = None, None, {0, 1}, __import__("logging").getLogger("t")
+    ticks = []
+
+    def tick(s):                                           # the drops land a game tick later
+        ticks.append(s)
+        for i in dropped:
+            inv[i] = {"id": -1, "key": ""}
+    b.sleep = tick
     b.make_log_room()
     assert sorted(dropped) == [26, 27]                     # the burnt fish go first
+    assert len(ticks) == 1 and b.occupied() == set(range(26))   # waited for them to go
+
+
+def test_fire_logs_are_chopped_once_the_dropped_fish_are_gone(monkeypatch):
+    # 23:15: "Dropping 2 fish to make room" then "No room in the backpack for a log" - the
+    # screen (minimized window / drops not landed yet) still showed 28 items
+    from lumberjack import actions
+    from lumberjack.core import backpack
+    from lumberjack.skills import fish_cook
+    inv = [{"id": 590, "key": "tinderbox"}] + [{"id": 377, "key": "raw_lobster"}] * 27
+    monkeypatch.setattr(backpack, "slots", lambda: inv)
+    monkeypatch.setattr(fish_cook.inventory, "occupied", lambda frame: [True] * 28)
+
+    def drop(ctx, gs, slots):
+        for i in slots:
+            inv[i] = {"id": -1, "key": ""}
+    monkeypatch.setattr(actions, "drop_known", drop)
+    b = fish_cook.FishCooker.__new__(fish_cook.FishCooker)
+    b.ctx, b.gs, b.keep_slots, b.log = None, None, {0}, __import__("logging").getLogger("t")
+    b.fire_trees, b.levels, b.spawn_tools, b.state = ["tree"], {}, False, ""
+    b.grab, b.sleep = lambda: None, lambda s: None
+    clicks = []
+
+    def click(types):
+        clicks.append(1)
+        inv[1] = inv[2] = {"id": 1511, "key": "logs"}          # where the dropped lobsters were
+        return "tree"
+    b.click_tree, b.wait_chop = click, lambda before, want: None
+    assert b.chop_logs() == [1, 2] and clicks == [1]
+
+
+def test_an_unreachable_fire_tree_is_skipped_for_another(monkeypatch):
+    # "Chopping a evergreen for a fire (5 tile(s) away)" x7 -> 'the game keeps saying "I can't reach that."'
+    import time
+    from lumberjack.core import backpack, interact
+    from lumberjack.skills import fish_cook
+    inv = [{"id": 590, "key": "tinderbox"}] + [{"id": -1, "key": ""}] * 27
+    monkeypatch.setattr(backpack, "slots", lambda: inv)
+    trees = [{"name": "Evergreen", "ops": ["Chop down"], "dist": 5, "tile": [2800, 3430], "screen": [100, 100]},
+             {"name": "Tree", "ops": ["Chop down"], "dist": 9, "tile": [2810, 3436], "screen": [200, 120]}]
+    chat = {"count": 0, "lines": []}
+
+    class Gs:
+        def locs(self, r):
+            return trees
+
+        def chat(self, n):
+            return chat
+    clicked = []
+
+    def use_option(ctx, gs, pts, verb, name):
+        clicked.append(name)
+        if name == "Evergreen":
+            chat["count"] += 1
+            chat["lines"] = [{"type": 0, "text": "I can't reach that."}]
+        else:
+            inv[1] = inv[2] = {"id": 1511, "key": "logs"}
+        return True
+    monkeypatch.setattr(interact, "on_screen", lambda x, y: True)
+    monkeypatch.setattr(interact, "points_for", lambda loc: [])
+    monkeypatch.setattr(interact, "use_option", use_option)
+    b = fish_cook.FishCooker.__new__(fish_cook.FishCooker)
+    b.ctx, b.gs, b.keep_slots, b.log = None, Gs(), {0}, __import__("logging").getLogger("t")
+    b.fire_trees, b.levels, b.spawn_tools, b.state = ["tree"], {}, False, ""
+    b.grab, b.sleep, b.bad_trees = lambda: None, lambda s: None, {}
+    b.wait_chop = lambda before, want: None
+    assert b.chop_logs() == [1, 2]
+    assert clicked == ["Evergreen", "Tree"]
+    assert b.bad_trees[(2800, 3430)] > time.monotonic()
+    assert not hasattr(b, "chat_handled") or "can't reach that" not in b.chat_handled
 
 
 def test_fishing_keeps_going_while_fish_still_come_in(monkeypatch):
