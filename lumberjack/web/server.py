@@ -1192,24 +1192,25 @@ class BotController:
                 if left <= 0:
                     return
                 run = s.model_copy(update={"max_minutes": left})
-            place_name, over, nxt = None, {}, None
-            if not s.map and s.start_mode == "here":
-                route = gather_route(s.task, s.train_mode)
-                levels = _levels()
-                lv = step_level(PlanStep(task=s.task), levels)
-                if route != s.task:            # gather: the gathering skill's level counts too
-                    rl = step_level(PlanStep(task=route), levels)
-                    lv = min(x for x in (lv, rl) if x is not None) if (lv or rl) else None
-                place_name, over, nxt = training.start_for(route, s.model_dump(), lv)
-                if route != s.task:
-                    nxt = None
-                if place_name is None and not training.has_route(route) and training.underground(_my_tile()):
-                    place_name = training.SURFACE  # fires won't light, nets won't cast underground
+            route = gather_route(s.task, s.train_mode)
+            levels = _levels()
+            lv = step_level(PlanStep(task=s.task), levels)
+            if route != s.task:            # gather: the gathering skill's level counts too
+                rl = step_level(PlanStep(task=route), levels)
+                lv = min(x for x in (lv, rl) if x is not None) if (lv or rl) else None
+            place_name, over, nxt = training.start_for(route, s.model_dump(), lv)
+            if route != s.task:
+                nxt = None
+            if place_name is None and not training.has_route(route) and training.underground(_my_tile()):
+                place_name = training.SURFACE  # fires won't light, nets won't cast underground
             place = places.load().get(place_name) if place_name else None
             if place is None:                      # nowhere to go: exactly as set up, where we stand
+                log.info("No training spot known for %s - starting where we stand", s.task)
                 self._run_with_recovery(run, log, label=f"Running {s.task}", first_as_is=True)
                 return
-            run = run.model_copy(update=over)
+            # at the training spot the game's own data finds everything: no walking to old map spots
+            run = run.model_copy(update={**over, "start_mode": "here", "start_spot": None, "chop_spot": None,
+                                         "fish_spot": None, "mine_spot": None, "fight_spot": None})
             ok = self._run_with_recovery(run, log, label=f"Running {s.task} at {place_name}",
                                          place=place, place_name=place_name, level=nxt)
             if not (nxt and ok and str(self.last_reason).startswith("reached level")):

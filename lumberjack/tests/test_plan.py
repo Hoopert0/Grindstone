@@ -911,3 +911,20 @@ def test_a_single_start_travels_to_the_spot_for_the_pick_and_moves_up_tiers(monk
     monkeypatch.setattr(ctl, "_run_with_recovery", level_up)
     ctl._run_single_at_spot(server.Settings(task="fishing", auto_fish=True), log)
     assert runs == [("lure", "★ Lumbridge river", 40), ("cage", "★ Catherby fishing", 50)]
+
+
+def test_a_single_start_travels_even_with_an_old_recorded_map_selected(monkeypatch):
+    """v137 skipped the trip when a recorded map was picked in the panel ("Running fishing", no
+    spot) - lure fishing searched an empty bank of the river three times and gave up."""
+    ctl = server.BotController()
+    runs = []
+
+    def rec(s, log, label, place=None, place_name=None, teleport=True, level=None, first_as_is=False):
+        runs.append((place_name, s.fish_spot, s.start_mode))
+        ctl.last_reason = "time limit reached"
+        return True
+    monkeypatch.setattr(ctl, "_run_with_recovery", rec)
+    monkeypatch.setattr(server, "_levels", lambda: {"fishing": 33})
+    s = server.Settings(task="fishing", fish_method="lure", map="home", fish_spot="pier", start_mode="spot")
+    ctl._run_single_at_spot(s, __import__("logging").getLogger("t"))
+    assert runs == [("★ Lumbridge river", None, "here")]
