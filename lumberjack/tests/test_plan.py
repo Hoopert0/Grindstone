@@ -882,3 +882,32 @@ def test_skills_table_for_the_panel(monkeypatch):
     assert t["total"] == 110
     raw["attack"]["xp"] += 50
     assert server.skills_table(raw)["skills"][0]["gained"] == 50
+
+
+def test_a_single_start_travels_to_the_spot_for_the_pick_and_moves_up_tiers(monkeypatch):
+    """Fishing picked with "net" at level 33 searched Lumbridge for spots that aren't there:
+    a single Start now goes to Draynor first; by level, it moves on to the next tier."""
+    ctl = server.BotController()
+    runs = []
+    reasons = ["reached level 40", "time limit reached"]
+
+    def rec(s, log, label, place=None, place_name=None, teleport=True, level=None, first_as_is=False):
+        runs.append((s.fish_method, place_name, level))
+        ctl.last_reason = reasons.pop(0)
+        return True
+    monkeypatch.setattr(ctl, "_run_with_recovery", rec)
+    lv = {"fishing": 33}
+    monkeypatch.setattr(server, "_levels", lambda: dict(lv))
+    log = __import__("logging").getLogger("t")
+    ctl._run_single_at_spot(server.Settings(task="fishing", fish_method="net", auto_fish=False), log)
+    assert runs == [("net", "★ Draynor fishing", None)]
+    runs.clear()
+    reasons[:] = ["reached level 40", "time limit reached"]
+
+    def level_up(*a, **k):
+        r = rec(*a, **k)
+        lv["fishing"] = 40
+        return r
+    monkeypatch.setattr(ctl, "_run_with_recovery", level_up)
+    ctl._run_single_at_spot(server.Settings(task="fishing", auto_fish=True), log)
+    assert runs == [("lure", "★ Lumbridge river", 40), ("cage", "★ Catherby fishing", 50)]

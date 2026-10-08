@@ -863,7 +863,7 @@ class BotController:
 
         def run():
             try:
-                self._run_with_recovery(s, log, label=f"Running {s.task}", first_as_is=True)
+                self._run_single_at_spot(s, log)
             except Exception as e:
                 if not self.stop_event.is_set():
                     self.error = _err_text(e)
@@ -1178,6 +1178,43 @@ class BotController:
             if not self.updating:
                 PLAN_RUNNING.unlink(missing_ok=True)
             log.info("Autopilot stopped")
+
+    def _run_single_at_spot(self, s: Settings, log):
+        """A single-task Start: travel to the training spot for the level (or for what was picked:
+        net fishing -> Draynor, willows -> Draynor, iron -> Varrock...) and start there, moving up a
+        tier when the level allows. A task with no route starts where we stand (on the surface)."""
+        from lumberjack.nav import places, training
+        deadline = time.monotonic() + s.max_minutes * 60 if s.max_minutes else None
+        while not self.stop_event.is_set():
+            run = s
+            if deadline:
+                left = (deadline - time.monotonic()) / 60
+                if left <= 0:
+                    return
+                run = s.model_copy(update={"max_minutes": left})
+            place_name, over, nxt = None, {}, None
+            if not s.map and s.start_mode == "here":
+                route = gather_route(s.task, s.train_mode)
+                levels = _levels()
+                lv = step_level(PlanStep(task=s.task), levels)
+                if route != s.task:            # gather: the gathering skill's level counts too
+                    rl = step_level(PlanStep(task=route), levels)
+                    lv = min(x for x in (lv, rl) if x is not None) if (lv or rl) else None
+                place_name, over, nxt = training.start_for(route, s.model_dump(), lv)
+                if route != s.task:
+                    nxt = None
+                if place_name is None and not training.has_route(route) and training.underground(_my_tile()):
+                    place_name = training.SURFACE  # fires won't light, nets won't cast underground
+            place = places.load().get(place_name) if place_name else None
+            if place is None:                      # nowhere to go: exactly as set up, where we stand
+                self._run_with_recovery(run, log, label=f"Running {s.task}", first_as_is=True)
+                return
+            run = run.model_copy(update=over)
+            ok = self._run_with_recovery(run, log, label=f"Running {s.task} at {place_name}",
+                                         place=place, place_name=place_name, level=nxt)
+            if not (nxt and ok and str(self.last_reason).startswith("reached level")):
+                return
+            log.info("Level %d - moving up to the next training spot", nxt)
 
     def _run_step(self, step: PlanStep, plan: Plan, log):
         """One plan step, with recovery. True when it ended well (time / level reached). With

@@ -130,6 +130,47 @@ def pick(task, level):
     return place, dict(opts)
 
 
+# what a single-task Start's own choice is matched on: route -> (its "choose by level" switch or
+# None, the setting the tiers set)
+CHOICE = {
+    "fishing": ("auto_fish", "fish_method"),
+    "woodcutting": ("auto_trees", "trees"),
+    "mining": ("auto_ores", "ores"),
+    "combat": (None, "targets"),
+    "ranged": (None, "targets"),
+    "slayer": (None, "targets"),
+    "thieving": (None, "thieve"),
+}
+
+
+def _overlaps(mine, tier):
+    a = {mine} if isinstance(mine, str) else set(mine or [])
+    b = {tier} if isinstance(tier, str) else set(tier or [])
+    return bool(a & b)
+
+
+def start_for(route, settings, level):
+    """Where a single-task Start goes first, from the route: (place name, setting overrides,
+    next tier's level). The user's own pick (net fishing, willows, iron...) picks the place that
+    has it - the highest such tier the level allows, else the lowest; with the "by level" switch
+    on (or nothing to match, like smithing), the level picks place and settings as Autopilot does,
+    and the next tier's level comes back so the run moves on there. (None, {}, None) without a
+    route or when the pick isn't on it (the run starts where we stand)."""
+    tiers = ROUTES.get(route)
+    if not tiers:
+        return None, {}, None
+    switch, key = CHOICE.get(route, (None, None))
+    if key is None or (switch and settings.get(switch)):
+        place, opts = pick(route, level)
+        nxt = next((t[0] for t in tiers if level is not None and t[0] > level), None)
+        return place, opts, nxt
+    match = [t for t in tiers if key in t[2] and _overlaps(settings.get(key), t[2][key])]
+    if not match:
+        return None, {}, None
+    fit = [t for t in match if level is not None and t[0] <= level] or match[:1]
+    return fit[-1][1], {}, None
+
+
 # ---- checking the built-in places in the game -----------------------------------------------
 NEAR = 15               # what a bot searches around its spot
 FAR = 40                # how far a check looks for the targets when they aren't near
