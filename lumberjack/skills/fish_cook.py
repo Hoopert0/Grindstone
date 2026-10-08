@@ -218,6 +218,24 @@ class FishCooker(Fisher):
         self.log.warning("Couldn't light a fire")
         return None
 
+    def make_log_room(self):
+        """A freshly spawned axe can take the last free slot ("No room in the backpack for a
+        log" - a whole load uncooked): drop raw/burnt fish until LOG_ROOM slots are free."""
+        from lumberjack.core import backpack
+        inv = backpack.slots()
+        if inv is None:
+            return
+        free = sum(1 for s in inv if s["id"] < 0)
+        if free >= LOG_ROOM:
+            return
+        spare = [i for i, s in enumerate(inv) if s["id"] >= 0 and i not in self.keep_slots
+                 and backpack.kind(s["key"]) in ("burnt", "raw")]
+        spare.sort(key=lambda i: backpack.kind(inv[i]["key"]) != "burnt")   # burnt fish first
+        drop = spare[:LOG_ROOM - free]
+        if drop:
+            self.log.info("Dropping %d fish to make room for fire logs", len(drop))
+            actions.drop_known(self.ctx, self.gs, drop)
+
     def only_logs(self, slots):
         """Of these slots, the ones game data says hold logs (all of them without game data).
         Using the tinderbox on anything else only says "Nothing interesting happens"."""
@@ -242,6 +260,7 @@ class FishCooker(Fisher):
         """Chop up to LOG_ROOM logs from a nearby tree. Returns the new log slots."""
         types = usable_trees(self.fire_trees, self.levels, names_known=self.gs is not None)
         self.ensure_axe()                    # before the snapshot: a spawned axe is not a log
+        self.make_log_room()
         before = {i for i, o in enumerate(inventory.occupied(self.grab())) if o}
         want = min(LOG_ROOM, 28 - len(before))
         if want <= 0:

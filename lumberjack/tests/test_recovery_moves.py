@@ -161,3 +161,59 @@ def test_the_tinderbox_is_only_used_on_logs_never_a_freshly_spawned_axe(monkeypa
     monkeypatch.setattr(fish_cook.actions, "dismiss_dialog", lambda ctx: False)
     assert b.make_fire([2, 3]) == []
     assert used == [(0, 3)] and b.tinder_slot == 0 and b.keep_slots == {0}
+
+
+def test_a_spawned_axe_in_the_last_slot_still_leaves_room_for_fire_logs(monkeypatch):
+    from lumberjack import actions
+    from lumberjack.core import backpack
+    from lumberjack.skills import fish_cook
+    inv = ([{"id": 590, "key": "tinderbox"}, {"id": 1357, "key": "adamant_axe"}]
+           + [{"id": 349, "key": "raw_trout"}] * 24 + [{"id": 343, "key": "burnt_fish"}] * 2)
+    monkeypatch.setattr(backpack, "slots", lambda: inv)
+    dropped = []
+    monkeypatch.setattr(actions, "drop_known", lambda ctx, gs, slots: dropped.extend(slots))
+    cls = next(v for v in vars(fish_cook).values() if isinstance(v, type) and hasattr(v, "make_fire"))
+    b = cls.__new__(cls)
+    b.ctx, b.gs, b.keep_slots, b.log = None, None, {0, 1}, __import__("logging").getLogger("t")
+    b.make_log_room()
+    assert sorted(dropped) == [26, 27]                     # the burnt fish go first
+
+
+def test_fishing_keeps_going_while_fish_still_come_in(monkeypatch):
+    import time
+    from lumberjack.skills import fishing as F
+    from lumberjack.skills.base import StopBot
+    f = F.Fisher.__new__(F.Fisher)
+    f.failed_clicks, f.method, f.started = F.MAX_FAILED_CLICKS - 1, "lure", time.monotonic() - 3600
+    f.last_catch_at = time.monotonic() - 30                # caught one half a minute ago
+    f.keep_slots, f.logs_cut, f.drop_at = set(), 0, 26
+    monkeypatch.setattr(F.inventory, "occupied", lambda frame: [False] * 28)
+    f.grab, f.sleep = lambda: None, lambda s: None
+    f.activity = types.SimpleNamespace(reset=lambda: None, update=lambda fr: None, active=False, filled=True)
+    f.busy_from_game = lambda: False
+    monkeypatch.setattr(F, "FISH_TIMEOUT_S", 0)
+    f.fish()                                               # 6th dud click: no StopBot yet
+    f.last_catch_at = time.monotonic() - F.NO_CATCH_STOP_S - 1
+    with pytest.raises(StopBot, match="tries without a catch"):
+        f.fish()
+
+
+def test_cooking_picks_a_fire_from_the_menu_when_we_stand_over_it(monkeypatch):
+    from lumberjack.core import interact
+    from lumberjack.skills import cooking
+    fire = {"name": "Fire", "screen": [300, 200], "dist": 1}
+    entries = [{"verb": "Walk here", "subject": "", "row": 0},
+               {"verb": "Use", "subject": "Raw trout -> Fire", "row": 1}]
+    state = {"open": False}
+    gs = types.SimpleNamespace(locs=lambda r, n: [fire],
+                               menu=lambda: {"open": state["open"], "entries": entries})
+    clicks = []
+    ctx = types.SimpleNamespace(sleep=lambda s: None, inp=types.SimpleNamespace(
+        click=lambda *a: clicks.append(a), move=lambda *a, **k: None,
+        right_click=lambda *a: state.update(open=True)))
+    monkeypatch.setattr(interact, "on_screen", lambda x, y, margin=4: True)
+    monkeypatch.setattr(interact, "points_for", lambda t: [(300, 200)])
+    import lumberjack.core.gamestate as G
+    monkeypatch.setattr(G, "menu_row_point", lambda m, row: (310, 230 + 15 * row))
+    assert cooking.use_on_fire_gs(ctx, gs, 5) is True
+    assert any(c and abs(c[1] - 245) <= 1 for c in clicks)  # the "Use ... -> Fire" row, not Walk here

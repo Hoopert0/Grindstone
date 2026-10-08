@@ -270,17 +270,36 @@ def use_on_fire_gs(ctx, gs, slot):
     x, y = R.INV_SLOTS[slot].center
     ctx.inp.click(x + random.randint(-4, 4), y + random.randint(-4, 4))
     ctx.sleep(random.uniform(0.25, 0.35))
+    from lumberjack.core.gamestate import menu_row_point
+
+    def on_fire(e):
+        return bool(e) and e.get("verb") == "Use" and (e.get("subject") or "").lower().endswith("fire")
     for f in fires[:3]:
         for px, py in interact.points_for(f):
             if not interact.on_screen(px, py):
                 continue
-            ctx.inp.move(px + random.randint(-2, 2), py + random.randint(-2, 2))
+            px, py = px + random.randint(-2, 2), py + random.randint(-2, 2)
+            ctx.inp.move(px, py)
             ctx.sleep(random.uniform(0.1, 0.16))
-            top = top_entry(gs.menu())
-            if top and top["verb"] == "Use" and top["subject"].lower().endswith("fire"):
+            m = gs.menu()
+            if on_fire(top_entry(m)):
                 ctx.inp.click()
                 log.info("Using slot %d on a fire %d tile(s) away", slot + 1, f["dist"])
                 return True
+            if any(on_fire(e) for e in m.get("entries") or []):
+                # a fresh fire sits next to us: our own model (or another) is on top - pick the
+                # fire from the right-click menu instead of lighting another one
+                ctx.inp.right_click(px, py)
+                ctx.sleep(random.uniform(0.2, 0.3))
+                m = gs.menu()
+                e = next((e for e in m.get("entries") or [] if on_fire(e)), None)
+                if m.get("open") and e:
+                    rx, ry = menu_row_point(m, e["row"])
+                    ctx.inp.click(rx + random.randint(-12, 12), ry + random.randint(-1, 1))
+                    log.info("Using slot %d on a fire %d tile(s) away (menu)", slot + 1, f["dist"])
+                    return True
+                ctx.inp.move(px, max(R.VIEWPORT.y + 30, py - 90))   # leaving closes the menu
+                ctx.sleep(0.2)
     _deselect(ctx)
     return False
 

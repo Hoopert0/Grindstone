@@ -75,7 +75,8 @@ FISH_TIMEOUT_S = 600             # hard cap on one click
 NO_CATCH_S = 75                  # busy (or "busy") this long without a catch -> re-click
 NEVER_STARTED_S = 6              # no movement this long after clicking -> missed
 DUD_SPOT_S = 45                  # a spot a click caught nothing at is passed over this long
-MAX_FAILED_CLICKS = 6            # clicks in a row that caught nothing -> stop
+MAX_FAILED_CLICKS = 6            # clicks in a row that caught nothing...
+NO_CATCH_STOP_S = 180.0          # ...and nothing caught for this long -> stop (spots hop about a lot)
 SCANS_BEFORE_MOVING = 4
 EMPTY_ROUNDS_BEFORE_GIVING_UP = 12
 WAIT_FOR_SPOT_S = 8              # spots move; wait a bit before scanning again
@@ -810,6 +811,7 @@ class Fisher(BotBase):
             last = n
         if last > before:
             self.failed_clicks = 0
+            self.last_catch_at = time.monotonic()
             return
         self.failed_clicks += 1
         spot = getattr(self, "last_spot", None)
@@ -818,7 +820,8 @@ class Fisher(BotBase):
                 self.dud_spots = {}
             self.dud_spots[spot] = time.monotonic() + DUD_SPOT_S
             self.last_spot = None
-        if self.failed_clicks >= MAX_FAILED_CLICKS:
+        since = time.monotonic() - getattr(self, "last_catch_at", self.started)
+        if self.failed_clicks >= MAX_FAILED_CLICKS and since > NO_CATCH_STOP_S:
             raise StopBot(f"{self.failed_clicks} tries without a catch - right tool ({TOOLS[self.method]})"
                           f" and level ({METHOD_LEVELS[self.method]}+)?")
 
