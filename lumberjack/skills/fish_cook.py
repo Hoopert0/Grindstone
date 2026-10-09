@@ -325,8 +325,15 @@ class FishCooker(Fisher):
         new = self.only_logs(sorted(self.occupied() - before))
         if new:
             self.log.info("Chopped %d log(s) for a fire", len(new))
-        else:
-            self.log.warning("Couldn't chop any %s logs nearby", "/".join(types))
+            return new
+        self.log.warning("Couldn't chop any %s logs nearby", "/".join(types))
+        if self.gs and self.spawn_tools:
+            # every tree in reach is fenced off: spawn plain logs (singleplayer admin) rather
+            # than leave a whole load uncooked
+            from lumberjack import items
+            self.log.info("Spawning %d logs for the fire instead", want)
+            items.spawn(self.ctx, "logs", want)
+            new = self.only_logs(sorted(self.occupied() - before))
         return new
 
     def ensure_axe(self):
@@ -403,6 +410,12 @@ class FishCooker(Fisher):
             self.sleep(0.6)
             while time.monotonic() < end and self.gs.player().get("moving"):
                 self.sleep(0.2)
+            tile = tuple(loc["tile"])
+            if interact.tiles_apart(self.gs.player()["tile"], tile) >= loc["dist"]:
+                # no closer (behind the Catherby fence: "walking to a evergreen 6 tiles away" over
+                # and over): leave it alone like one the game says we can't reach
+                self.bad_trees[tile] = time.monotonic() + BAD_TREE_S
+                self.log.info("Can't get any closer to that %s - trying another", loc["name"].lower())
             return self.click_tree_gs(types, walked=True)
         if not near:
             self.log.info("No %s within %d tiles", "/".join(types), FIRE_TREE_RADIUS)

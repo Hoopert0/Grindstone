@@ -361,3 +361,49 @@ def test_lobster_fishing_drops_the_fly_rod_feathers_and_net(monkeypatch):
     f.keep_slots, f.log = {0, 1, 2, 3, 4, 5}, __import__("logging").getLogger("t")
     f.drop_other_methods_tools()
     assert sorted(dropped) == [1, 2, 4] and f.keep_slots == {0, 3, 5}
+
+
+def test_a_fenced_off_fire_tree_we_cant_walk_closer_to_is_skipped(monkeypatch):
+    # 02:41: "No usable tree on screen - walking to a evergreen 6 tiles away" x6, then no logs
+    import time
+    from lumberjack.core import interact
+    from lumberjack.skills import fish_cook
+    tree = {"name": "Evergreen", "ops": ["Chop down"], "dist": 6, "tile": [2840, 3425], "screen": [-1, -1]}
+
+    class Gs:
+        def locs(self, r):
+            return [tree]
+
+        def player(self):
+            return {"tile": [2840, 3431], "moving": False}      # the walk got us nowhere
+    walks = []
+    monkeypatch.setattr(interact, "on_screen", lambda x, y: x >= 0)
+    monkeypatch.setattr(interact, "walk_toward", lambda ctx, me, tile: walks.append(tile))
+    b = fish_cook.FishCooker.__new__(fish_cook.FishCooker)
+    b.ctx, b.gs, b.log, b.state = None, Gs(), __import__("logging").getLogger("t"), ""
+    b.sleep, b.bad_trees = (lambda s: None), {}
+    assert b.click_tree_gs(["tree"]) is None
+    assert b.bad_trees[(2840, 3425)] > time.monotonic()
+    assert b.click_tree_gs(["tree"]) is None and len(walks) == 1    # not walked at again
+
+
+def test_logs_are_spawned_when_no_tree_can_be_chopped(monkeypatch):
+    from lumberjack import items
+    from lumberjack.core import backpack
+    from lumberjack.skills import fish_cook
+    inv = [{"id": 590, "key": "tinderbox"}] + [{"id": 377, "key": "raw_lobster"}] * 20 + [{"id": -1, "key": ""}] * 7
+    monkeypatch.setattr(backpack, "slots", lambda: inv)
+    spawned = []
+
+    def spawn(ctx, key, amount=1):
+        spawned.append((key, amount))
+        inv[21] = inv[22] = {"id": 1511, "key": "logs"}
+    monkeypatch.setattr(items, "spawn", spawn)
+    b = fish_cook.FishCooker.__new__(fish_cook.FishCooker)
+    b.ctx, b.gs, b.keep_slots, b.log = None, object(), {0}, __import__("logging").getLogger("t")
+    b.fire_trees, b.levels, b.spawn_tools, b.state = ["tree"], {}, True, ""
+    b.grab, b.sleep = lambda: None, lambda s: None
+    b.ensure_axe = lambda: None
+    b.click_tree, b.scan_camera = (lambda types: None), (lambda what: None)
+    b.reach_said = lambda: False
+    assert b.chop_logs() == [21, 22] and spawned == [("logs", 2)]

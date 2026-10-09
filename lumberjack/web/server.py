@@ -1316,6 +1316,13 @@ class BotController:
                             log.warning("Couldn't get to %s (attempt %d)", where, failures + 1)
                             failures += 1
                             continue
+                except gamestate.GameStateError as e:
+                    # logged out / reconnecting mid-travel (23:39 "not in the game right now"):
+                    # wait for the auto login and go again, not a crashed run
+                    log.warning("Lost the game while getting ready (%s) - waiting for it", e)
+                    failures += 1
+                    self._sleep(10)
+                    continue
                 finally:
                     ctx.inp.close()
                 self._doing(None)

@@ -558,7 +558,11 @@ class Fisher(BotBase):
             return False
         if not offering:
             self.spot_action = spots[0]["ops"][0].lower() if spots[0]["ops"] else None
-            self.log.info("The spots here offer %s - no %s option", "/".join(spots[0]["ops"]), verb)
+            if verb in spots[0]["ops"]:          # shark spots (net/harpoon) before Fishing 76
+                self.log.info("The spots here offer %s - sharks need Fishing %d", "/".join(spots[0]["ops"]),
+                              SHARK_LEVEL)
+            else:
+                self.log.info("The spots here offer %s - no %s option", "/".join(spots[0]["ops"]), verb)
             if self.auto and "fishing" in self.levels and self.choose_method(self.levels["fishing"]):
                 self.ensure_tools()
             return False
